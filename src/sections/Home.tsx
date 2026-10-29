@@ -3,12 +3,13 @@ import { ArrowRight, CalendarDays, Cake, CloudSun, Gamepad2, Landmark, Mail as M
 import { SECTION_COLOR, go, useGoogleCtx } from '../lib/nav'
 import { WeatherMini, hhmm } from '../components/WeatherParts'
 import { Card, CardTitle, CountUp, Ring, capitalize, relTime } from '../components/ui'
-import { expandLocal, sameDay, useEvents, useLocalEvents } from '../lib/events'
+import { expandLocal, kindIcon, sameDay, useEvents, useLocalEvents } from '../lib/events'
 import { fetchInbox, type CalEvent, type Mail } from '../lib/google'
 import { useForecast, useHere } from '../lib/useWeather'
 import { MADRID, wmoIcon, type Forecast } from '../lib/weather'
 import { useAmiiboCollection } from './Amiibos'
 import { Money } from './Finance'
+import { ReleaseAlerts } from './Games'
 import { monthFlow, monthKey, netWorth, spendByCategory, useAccounts, useTxs } from '../lib/finance'
 
 function useClock() {
@@ -88,6 +89,7 @@ export default function Home() {
 
   return (
     <div className="bento">
+      <ReleaseAlerts />
       {/* Hero */}
       <Card className="hero span-8" i={0} accent={SECTION_COLOR.home}>
         <div className="eyebrow" style={{ '--c': SECTION_COLOR.home } as CSSProperties}>
@@ -200,7 +202,7 @@ function AgendaCard({ events, loading }: { events: CalEvent[]; loading: boolean 
             <div className={`tl-day ${sameDay(g.day, today) ? 'today' : ''}`}>{label(g.day)}</div>
             {g.items.map((e) => (
               <div key={e.id} className={`tl-item ${e.id === nextId ? 'next' : ''}`} style={{ '--c': e.color } as CSSProperties}>
-                <div className="tl-ico">{e.kind === 'birthday' ? '🎂' : e.kind === 'reminder' ? '🔔' : <i />}</div>
+                <div className="tl-ico">{kindIcon(e.kind) ?? <i />}</div>
                 <div className="tl-main">
                   <div className="tl-title">{e.title}</div>
                   <div className="tl-sub">{e.calendar}{e.location ? ` · ${e.location}` : ''}</div>

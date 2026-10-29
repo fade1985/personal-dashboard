@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
-  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings,
+  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Joystick, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings,
 } from 'lucide-react'
 import { useGoogle } from './lib/google'
 import { GoogleCtx, SECTION_COLOR, go, useGoogleCtx, type SectionId } from './lib/nav'
@@ -9,12 +9,14 @@ import CalendarSection from './sections/CalendarSection'
 import WeatherSection from './sections/WeatherSection'
 import Amiibos from './sections/Amiibos'
 import Finance from './sections/Finance'
+import Games from './sections/Games'
 
 const NAV: { id: SectionId; label: string; icon: ReactNode }[] = [
   { id: 'home', label: 'Inicio', icon: <HomeIcon size={17} /> },
   { id: 'calendar', label: 'Calendario', icon: <CalendarDays size={17} /> },
   { id: 'weather', label: 'El tiempo', icon: <CloudSun size={17} /> },
   { id: 'finance', label: 'Bancos y gastos', icon: <Landmark size={17} /> },
+  { id: 'games', label: 'Juegos', icon: <Joystick size={17} /> },
   { id: 'amiibos', label: 'Amiibos', icon: <Gamepad2 size={17} /> },
 ]
 
@@ -84,6 +86,7 @@ export default function App() {
           {section === 'calendar' && <CalendarSection />}
           {section === 'weather' && <WeatherSection />}
           {section === 'finance' && <Finance />}
+          {section === 'games' && <Games />}
           {section === 'amiibos' && <Amiibos />}
         </main>
       </div>

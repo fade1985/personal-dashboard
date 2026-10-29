@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { useGoogle } from './google'
 
-export type SectionId = 'home' | 'calendar' | 'weather' | 'finance' | 'amiibos'
+export type SectionId = 'home' | 'calendar' | 'weather' | 'finance' | 'games' | 'amiibos'
 
 /** Color de acento de cada sección (iconos, halos, títulos). */
 export const SECTION_COLOR: Record<SectionId | 'mail', string> = {
@@ -9,6 +9,7 @@ export const SECTION_COLOR: Record<SectionId | 'mail', string> = {
   calendar: '#a78bfa',
   weather: '#38bdf8',
   finance: '#4ade80',
+  games: '#e879f9',
   amiibos: '#fb7185',
   mail: '#fbbf24',
 }

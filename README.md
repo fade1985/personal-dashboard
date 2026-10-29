@@ -20,6 +20,7 @@ Abre http://localhost:5173
 | **Calendario** | Vista mensual con eventos de Google Calendar + eventos, cumpleaños (anuales) y avisos locales | Google Calendar API |
 | **El tiempo** | Actual, 7 días y gráfico hora a hora. Madrid, tu ubicación y ciudades que añadas | [Open-Meteo](https://open-meteo.com) (sin key) |
 | **Bancos y gastos** | Patrimonio neto, ingresos/gastos por mes, gasto por categoría, cuentas e inversiones, movimientos con reglas de categorías | CSV/Excel exportado por cada banco |
+| **Juegos** | Juegos pasados (por año, con nota y horas), pendientes, jugando y por salir; los lanzamientos van al calendario y avisan al salir | [RAWG](https://rawg.io/apidocs) (key gratis) |
 | **Amiibos** | Catálogo completo, marcar los que tienes / deseas, en caja, precio y notas, progreso por serie, exportar/importar JSON | [AmiiboAPI](https://www.amiiboapi.org) |
 
 Próximamente: gym, recetas, tareas del hogar.
@@ -36,6 +37,22 @@ el mapeo se recuerda por cuenta y reimportar el mismo archivo no duplica movimie
 - Para inversiones (Wise, Trade Republic) anota el valor y lo aportado en el lápiz de la cuenta; cada actualización
   queda en el histórico.
 - El ojo de arriba difumina los importes.
+
+## Juegos
+
+Sin configurar nada puedes apuntar juegos a mano (con fecha de salida opcional). Para buscar con portada,
+plataformas y fechas de lanzamiento automáticas:
+
+1. Crea una cuenta en https://rawg.io/apidocs y pide una API key (gratis, 20.000 peticiones/mes).
+2. Añádela a `.env.local` **sin** prefijo `VITE_` (la usa el proxy del servidor de Vite y no llega al navegador):
+   ```
+   RAWG_KEY=tu_clave
+   ```
+3. Reinicia `npm run dev`.
+
+Los juegos que apuntas antes de que salgan aparecen en el calendario el día de su lanzamiento. Una vez al día
+se vuelve a consultar su fecha en RAWG (cambian a menudo), y cuando salen verás un aviso en Inicio y en Juegos
+(y una notificación del navegador si la activas).
 
 ## Conectar Google (Calendar + Gmail)
 

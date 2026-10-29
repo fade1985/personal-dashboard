@@ -132,7 +132,7 @@ export interface CalEvent {
   location?: string
   link?: string
   source: 'google' | 'local'
-  kind?: 'event' | 'birthday' | 'reminder'
+  kind?: 'event' | 'birthday' | 'reminder' | 'release'
 }
 
 interface GCalendar {

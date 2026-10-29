@@ -568,6 +568,72 @@ button.stat-tile:hover { background: rgba(255,255,255,.08); transform: translate
 .fin-mini-cats .track i { display: block; height: 100%; border-radius: 99px; animation: growx .9s var(--ease) both; transform-origin: left; }
 @keyframes growx { from { transform: scaleX(0); } }
 
+/* ---------- Juegos ---------- */
+.game-search { position: relative; }
+.game-search .fin-search { display: flex; }
+.input.big { font-size: 16px; padding: 14px 16px 14px 44px; border-radius: 16px; }
+.game-search .fin-search svg:first-child { left: 16px; }
+.search-spin { position: absolute; right: 14px; top: 50%; margin-top: -7.5px; color: var(--faint); }
+.game-results { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 30; max-height: min(520px, 70vh); overflow-y: auto;
+  background: var(--panel-solid); border: 1px solid var(--border-2); border-radius: 18px; box-shadow: 0 30px 60px -15px rgba(0,0,0,.9); animation: rise .2s both; padding: 6px; }
+.game-result { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 12px; transition: background .15s; }
+.game-result:hover { background: rgba(255,255,255,.05); }
+.game-result img { width: 72px; height: 44px; object-fit: cover; border-radius: 8px; background: rgba(255,255,255,.05); flex-shrink: 0; }
+.game-result.manual { border-top: 1px solid var(--border); border-radius: 0 0 12px 12px; margin-top: 4px; padding-top: 12px; color: var(--muted); flex-wrap: wrap; }
+.chip-n { font-size: 11px; opacity: .6; margin-left: 6px; font-weight: 600; }
+.games-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+
+.release-list { display: grid; gap: 4px; }
+.release-row { display: flex; align-items: center; gap: 12px; padding: 7px; border: 0; background: none; border-radius: 12px; text-align: left; transition: background .15s; width: 100%; }
+.release-row:hover { background: rgba(255,255,255,.05); }
+.release-row img { width: 56px; height: 38px; object-fit: cover; border-radius: 8px; background: rgba(255,255,255,.06); flex-shrink: 0; }
+.release-noimg { width: 56px; height: 38px; border-radius: 8px; background: rgba(232,121,249,.1); display: grid; place-items: center; flex-shrink: 0; }
+.release-count { font-size: 12px; font-weight: 700; color: #f5d0fe; background: rgba(232,121,249,.15); padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+
+.game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.game-card { display: block; padding: 0; text-align: left; border-radius: 18px; overflow: hidden; border: 1px solid var(--border); background: var(--panel);
+  backdrop-filter: blur(14px); transition: transform .3s var(--ease), box-shadow .3s, border-color .3s; animation: rise .5s calc(var(--i) * 30ms) var(--ease) both; }
+.game-card:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--c) 50%, transparent); box-shadow: 0 20px 40px -18px color-mix(in srgb, var(--c) 60%, transparent); }
+.game-card.upcoming { --c: #e879f9; }
+.game-cover { position: relative; aspect-ratio: 16 / 9.5; background: rgba(255,255,255,.04); overflow: hidden; border-radius: inherit; }
+.game-card .game-cover { border-radius: 0; }
+.game-cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s var(--ease); }
+.game-card:hover .game-cover img { transform: scale(1.06); }
+.game-noimg { display: grid; place-items: center; height: 100%; font-size: 40px; opacity: .5; }
+.game-badge { position: absolute; left: 10px; top: 10px; font-size: 11.5px; font-weight: 600; padding: 4px 9px; border-radius: 99px; background: rgba(8,8,16,.75); backdrop-filter: blur(8px); color: var(--c, #fff); }
+.game-badge.release { color: #fff; background: linear-gradient(135deg, #c026d3, #7c3aed); box-shadow: 0 6px 16px -6px #c026d3; }
+.game-meta { position: absolute; right: 10px; top: 10px; font-size: 12px; font-weight: 800; padding: 3px 7px; border-radius: 8px; background: #16a34a; color: #fff; }
+.game-info { padding: 12px 14px 14px; }
+.game-name { font-weight: 600; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-sub { font-size: 12px; color: var(--faint); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stars { color: #fbbf24; font-size: 13px; letter-spacing: 1px; margin-top: 4px; }
+.stars span { color: rgba(255,255,255,.15); }
+.star-input { display: flex; gap: 2px; }
+.star-input button { border: 0; background: none; padding: 2px; color: rgba(255,255,255,.2); transition: transform .15s, color .15s; }
+.star-input button:hover { transform: scale(1.15); }
+.star-input button.on { color: #fbbf24; }
+.star-input button.on svg { fill: #fbbf24; }
+
+.discover-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 1fr); gap: 14px; overflow-x: auto; padding-bottom: 6px; }
+.discover-item .game-cover { border-radius: 14px; }
+
+.game-modal { padding: 0; }
+.game-modal-cover { min-height: 240px; display: flex; align-items: flex-end; padding: 28px; background-size: cover; background-position: center; position: relative; }
+.game-modal-cover::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(18,21,42,.2), var(--panel-solid) 92%); }
+.game-modal-cover > div { position: relative; }
+.game-modal-cover h2 { margin: 0 0 4px !important; font-size: 32px; }
+.game-modal-body { padding: 4px 28px 28px; }
+textarea.input { resize: vertical; font-family: inherit; }
+
+.release-alerts { grid-column: 1 / -1; display: grid; gap: 10px; margin-bottom: 18px; }
+.bento > .release-alerts { margin-bottom: 0; }
+.release-alert { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 18px; border: 1px solid rgba(232,121,249,.4);
+  background: linear-gradient(90deg, rgba(88,28,135,.5), rgba(10,8,20,.9)); background-size: cover; background-position: center right;
+  box-shadow: 0 0 40px -12px rgba(232,121,249,.6); animation: rise .5s var(--ease) both; }
+.release-alert b { font-size: 16px; }
+.ring-bell { color: #f0abfc; animation: bell 1.4s ease-in-out infinite; flex-shrink: 0; }
+@keyframes bell { 0%, 60%, 100% { transform: rotate(0); } 10%, 30% { transform: rotate(-14deg); } 20%, 40% { transform: rotate(14deg); } }
+
 /* ---------- Responsive ---------- */
 /* Pantallas muy anchas: en vez de estirar las tarjetas, se amplía todo un poco
    y el contenido se limita a ~1800px para que no quede desproporcionado */

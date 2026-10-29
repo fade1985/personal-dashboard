@@ -1,10 +1,10 @@
 import { useMemo, useState, type CSSProperties } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, ExternalLink, MapPin, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { SECTION_COLOR, useGoogleCtx } from '../lib/nav'
+import { CalendarDays, ChevronLeft, Gamepad2, ChevronRight, ExternalLink, MapPin, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { SECTION_COLOR, go, useGoogleCtx } from '../lib/nav'
 import { Card, CardTitle, capitalize } from '../components/ui'
 import { useForecast } from '../lib/useWeather'
 import { MADRID, wmoIcon, wmoText } from '../lib/weather'
-import { KIND_META, sameDay, useEvents, useLocalEvents, ymd, type LocalEvent } from '../lib/events'
+import { KIND_META, kindIcon, sameDay, useEvents, useLocalEvents, ymd, type LocalEvent } from '../lib/events'
 import type { CalEvent } from '../lib/google'
 import { hhmm } from '../components/WeatherParts'
 
@@ -79,7 +79,7 @@ export default function CalendarSection() {
                   {w && <span className="cal-wx" title={wmoText(w.code)}>{wmoIcon(w.code)} {Math.round(w.max)}°</span>}
                   {evs.slice(0, 3).map((e) => (
                     <span key={e.id} className="cal-ev" style={{ background: e.color + '26', color: lighten(e.color) }}>
-                      {e.kind === 'birthday' ? '🎂 ' : e.kind === 'reminder' ? '🔔 ' : ''}
+                      {kindIcon(e.kind) && `${kindIcon(e.kind)} `}
                       {!e.allDay && `${hhmm(e.start)} `}{e.title}
                     </span>
                   ))}
@@ -121,10 +121,10 @@ export default function CalendarSection() {
 
 function EventRow({ e }: { e: CalEvent }) {
   const [, setLocal] = useLocalEvents()
-  const localId = e.source === 'local' ? e.id.split(':')[1] : null
+  const localId = e.id.startsWith('local:') ? e.id.split(':')[1] : null
   return (
     <div className="tl-item" style={{ '--c': e.color, padding: '10px 4px' } as CSSProperties}>
-      <div className="tl-ico">{e.kind === 'birthday' ? '🎂' : e.kind === 'reminder' ? '🔔' : <i />}</div>
+      <div className="tl-ico">{kindIcon(e.kind) ?? <i />}</div>
       <div className="tl-main">
         <div className="tl-title">{e.title}</div>
         <div className="tl-sub">
@@ -132,6 +132,7 @@ function EventRow({ e }: { e: CalEvent }) {
           {e.location && <> · <MapPin size={11} style={{ verticalAlign: -1 }} /> {e.location}</>}
         </div>
       </div>
+      {e.kind === 'release' && <button className="icon-btn" title="Ver en Juegos" onClick={() => go('games')}><Gamepad2 size={14} /></button>}
       {e.link && <a className="icon-btn" href={e.link} target="_blank" rel="noreferrer" title="Abrir en Google Calendar"><ExternalLink size={14} /></a>}
       {localId && (
         <button className="icon-btn" title="Borrar" onClick={() => setLocal((l) => l.filter((x) => x.id !== localId))}>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { fetchCalendarEvents, type CalEvent } from './google'
 import { usePersistentState } from './storage'
+import { releaseEvents, useGames } from './games'
 
 export interface LocalEvent {
   id: string
@@ -19,6 +20,10 @@ export const KIND_META: Record<LocalEvent['kind'], { label: string; icon: string
   birthday: { label: 'Cumpleaños', icon: '🎂', color: '#ec4899' },
   reminder: { label: 'Aviso', icon: '🔔', color: '#f59e0b' },
 }
+
+/** Emoji para un evento según su tipo (los normales no llevan). */
+export const kindIcon = (kind?: CalEvent['kind']) =>
+  kind === 'birthday' ? '🎂' : kind === 'reminder' ? '🔔' : kind === 'release' ? '🎮' : null
 
 export function useLocalEvents() {
   return usePersistentState<LocalEvent[]>('local-events', [])
@@ -62,9 +67,10 @@ function range(a: number, b: number) {
   return Array.from({ length: b - a + 1 }, (_, i) => a + i)
 }
 
-/** Todos los eventos (Google + locales) en un rango, ordenados. */
+/** Todos los eventos (Google + locales + lanzamientos de juegos) en un rango, ordenados. */
 export function useEvents(from: Date, to: Date, googleConnected: boolean) {
   const [local] = useLocalEvents()
+  const [games] = useGames()
   const [google, setGoogle] = useState<CalEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +94,6 @@ export function useEvents(from: Date, to: Date, googleConnected: boolean) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, googleConnected])
 
-  const events = [...google, ...expandLocal(local, from, to)].sort((a, b) => a.start.getTime() - b.start.getTime())
+  const events = [...google, ...expandLocal(local, from, to), ...releaseEvents(games, from, to)].sort((a, b) => a.start.getTime() - b.start.getTime())
   return { events, loading, error }
 }
