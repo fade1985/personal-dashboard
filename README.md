@@ -77,6 +77,19 @@ Solo lectura, sin backend: el token OAuth vive en la sesión del navegador.
 
 > Mientras la app esté en modo "Prueba" en Google, el permiso caduca cada 7 días y habrá que volver a conectar.
 
+## Desplegar en Vercel
+
+1. **Variables de entorno** (Project → Settings → Environment Variables), para *Production* y *Preview*:
+   - `VITE_GOOGLE_CLIENT_ID`: el mismo Client ID que en local.
+   - `RAWG_KEY`: la clave de RAWG. La usa la función `api/rawg.ts`, que hace de proxy como el servidor de Vite en local.
+2. **Redeploy** (Deployments → ⋯ → Redeploy): las variables se aplican al compilar, así que un deploy anterior no las ve.
+3. **Google Cloud** → Clientes → tu cliente web: añade la URL de Vercel (p. ej. `https://mi-dashboard.vercel.app`)
+   en *Orígenes de JavaScript autorizados* **y** en *URI de redireccionamiento autorizados*, sin barra final.
+   Los cambios pueden tardar unos minutos en aplicarse.
+
+Los datos de `localStorage` son por dominio: lo que guardaste en `localhost` no aparece en Vercel.
+Para pasarlo: **Exportar** (abajo en la barra lateral) en `localhost` → **Importar** en Vercel.
+
 ## Datos
 
 Todo lo local (colección de amiibos, eventos, ciudades) se guarda en `localStorage` con prefijo `pd:`.

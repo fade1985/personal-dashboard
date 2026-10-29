@@ -20,6 +20,34 @@ export function writeStore<T>(key: string, value: T) {
   }
 }
 
+// Sesión de Google y cachés: no tiene sentido llevarlos a otro navegador o dominio
+const NOT_EXPORTED = /^(google-|amiibo-catalog|games-checked-at|games-notified)/
+
+/** Copia de seguridad de todos los datos del dashboard (para pasarlos de localhost a Vercel, etc.). */
+export function exportAll() {
+  const data: Record<string, unknown> = {}
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)!
+    if (!k.startsWith(PREFIX) || NOT_EXPORTED.test(k.slice(PREFIX.length))) continue
+    data[k.slice(PREFIX.length)] = JSON.parse(localStorage.getItem(k)!)
+  }
+  const blob = new Blob([JSON.stringify({ app: 'mi-dashboard', exportedAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `mi-dashboard-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+/** Restaura una copia de exportAll(); sobrescribe las claves que traiga. Devuelve cuántas. */
+export async function importAll(file: File) {
+  const json = JSON.parse(await file.text())
+  if (json?.app !== 'mi-dashboard' || typeof json.data !== 'object') throw new Error('No es una copia de este dashboard')
+  const entries = Object.entries(json.data as Record<string, unknown>).filter(([k]) => !NOT_EXPORTED.test(k))
+  for (const [k, v] of entries) localStorage.setItem(PREFIX + k, JSON.stringify(v))
+  return entries.length
+}
+
 /**
  * useState persistido en localStorage. Todas las instancias con la misma clave
  * comparten valor (en esta pestaña y entre pestañas).

@@ -1,8 +1,9 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
-  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Joystick, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings,
+  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Joystick, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings, Download, Upload,
 } from 'lucide-react'
 import { useGoogle } from './lib/google'
+import { exportAll, importAll } from './lib/storage'
 import { GoogleCtx, SECTION_COLOR, go, useGoogleCtx, type SectionId } from './lib/nav'
 import Home from './sections/Home'
 import CalendarSection from './sections/CalendarSection'
@@ -80,6 +81,7 @@ export default function App() {
           <div className="sidebar-foot">
             <GoogleButton />
           </div>
+          <BackupButtons />
         </aside>
         <main className="main" key={section}>
           {section === 'home' && <Home />}
@@ -91,6 +93,27 @@ export default function App() {
         </main>
       </div>
     </GoogleCtx.Provider>
+  )
+}
+
+/** Exportar / importar todos los datos (para moverlos entre navegadores o de localhost a Vercel). */
+function BackupButtons() {
+  const restore = (file: File) =>
+    importAll(file)
+      .then((n) => { alert(`Restauradas ${n} colecciones de datos`); location.reload() })
+      .catch((e) => alert(`No se pudo importar: ${(e as Error).message}`))
+  return (
+    <div className="backup-row">
+      <button className="btn sm ghost" onClick={exportAll} title="Descargar copia de todos los datos"><Download size={13} /> Exportar</button>
+      <label className="btn sm ghost" title="Restaurar una copia (sobrescribe lo que haya)">
+        <Upload size={13} /> Importar
+        <input type="file" accept=".json" hidden onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (f && confirm('Se sobrescribirán los datos de este navegador con los de la copia. ¿Seguir?')) restore(f)
+        }} />
+      </label>
+    </div>
   )
 }
 
