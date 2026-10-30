@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Bell, BellRing, CalendarClock, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, X } from 'lucide-react'
+import { Bell, BellRing, CalendarClock, Download, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, Upload, X } from 'lucide-react'
 import { SECTION_COLOR, go } from '../lib/nav'
 import { Card, CardTitle, CountUp } from '../components/ui'
 import {
@@ -56,6 +56,31 @@ export default function Games() {
     return () => clearTimeout(t)
   }, [toast])
 
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), games }, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `juegos-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  // Se suman a los que ya hay; si un juego ya está (mismo juego de RAWG o mismo id), gana el del archivo
+  const importJson = (file: File) => {
+    file.text().then((t) => {
+      try {
+        const j = JSON.parse(t)
+        const incoming: Game[] = Array.isArray(j) ? j : j.games
+        if (!Array.isArray(incoming) || incoming.some((g) => !g?.id || !g.name)) throw new Error()
+        const same = (a: Game, b: Game) => a.id === b.id || (a.rawgId != null && a.rawgId === b.rawgId)
+        setGames((gs) => [...gs.filter((g) => !incoming.some((n) => same(g, n))), ...incoming])
+        setToast(`Importados ${incoming.length} juegos`)
+      } catch {
+        setToast('Archivo no válido')
+      }
+    })
+  }
+
   const today = todayYmd()
   const year = new Date().getFullYear()
   const active = games.filter((g) => g.status !== 'done' && g.status !== 'dropped')
@@ -102,11 +127,22 @@ export default function Games() {
           <h1>Juegos</h1>
           <p>{games.length ? `${done.length} pasados · ${playing.length} jugando · ${pending} pendientes · ${upcoming.length} por salir` : 'Apunta los juegos que te has pasado y los que quieres jugar'}</p>
         </div>
-        {perm !== 'granted' && typeof Notification !== 'undefined' && (
-          <button className="btn" onClick={askNotifications} disabled={perm === 'denied'} title={perm === 'denied' ? 'Notificaciones bloqueadas en el navegador' : ''}>
-            <Bell size={15} /> Avisarme también con notificación
-          </button>
-        )}
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          {perm !== 'granted' && typeof Notification !== 'undefined' && (
+            <button className="btn" onClick={askNotifications} disabled={perm === 'denied'} title={perm === 'denied' ? 'Notificaciones bloqueadas en el navegador' : ''}>
+              <Bell size={15} /> Avisarme también con notificación
+            </button>
+          )}
+          <button className="btn sm" onClick={exportJson} disabled={!games.length}><Download size={14} /> Exportar</button>
+          <label className="btn sm" style={{ cursor: 'pointer' }}>
+            <Upload size={14} /> Importar
+            <input type="file" accept="application/json" hidden onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) importJson(f)
+            }} />
+          </label>
+        </div>
       </div>
 
       <ReleaseAlerts />
