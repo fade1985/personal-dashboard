@@ -71,14 +71,15 @@ export default function App() {
               className={`nav-item ${section === n.id ? 'active' : ''}`}
               style={{ '--c': SECTION_COLOR[n.id] } as CSSProperties}
               onClick={() => go(n.id)}
+              title={n.label}
             >
-              <span className="nav-icon">{n.icon}</span> {n.label}
+              <span className="nav-icon">{n.icon}</span> <span className="nav-text">{n.label}</span>
             </button>
           ))}
           <div className="nav-label">Próximamente</div>
           {SOON.map((s) => (
             <button key={s.label} className="nav-item" disabled style={{ '--c': s.c } as CSSProperties}>
-              <span className="nav-icon">{s.icon}</span> {s.label} <span className="soon">pronto</span>
+              <span className="nav-icon">{s.icon}</span> <span className="nav-text">{s.label}</span> <span className="soon">pronto</span>
             </button>
           ))}
           <div className="sidebar-foot">
@@ -86,6 +87,7 @@ export default function App() {
             <SyncLine />
           </div>
           <BackupButtons />
+          <SidebarMini />
         </aside>
         <main className="main" key={section}>
           {section === 'home' && <Home />}
@@ -117,6 +119,33 @@ function BackupButtons() {
           if (f && confirm('Se sobrescribirán los datos de este navegador con los de la copia. ¿Seguir?')) restore(f)
         }} />
       </label>
+    </div>
+  )
+}
+
+/** Google y sincronización en pequeño, para la barra estrecha de tablet y la superior del móvil. */
+function SidebarMini() {
+  const g = useGoogleCtx()
+  const s = useSyncStatus()
+  if (!g.configured) return null
+  const syncTitle =
+    s.kind === 'syncing' ? 'Sincronizando…'
+    : s.kind === 'error' ? `Error al sincronizar: ${s.message}`
+    : s.kind === 'off' ? 'Sin sincronizar: pulsa para dar acceso a Drive'
+    : `Sincronizado ${Date.now() - s.at < 60_000 ? 'ahora mismo' : relTime(new Date(s.at))}. Pulsa para sincronizar`
+  return (
+    <div className="sidebar-mini">
+      {g.connected && (
+        <button className={`mini-btn ${s.kind === 'error' ? 'err' : ''}`} title={syncTitle} disabled={s.kind === 'syncing'}
+          onClick={() => (s.kind === 'off' ? g.connect() : syncNow())}>
+          {s.kind === 'off' || s.kind === 'error' ? <CloudOff size={16} /> : <RefreshCw size={16} className={s.kind === 'syncing' ? 'spin' : ''} />}
+        </button>
+      )}
+      <button className="mini-btn" title={g.connected ? `Google: ${g.email ?? 'conectado'} (pulsa para desconectar)` : 'Conectar Google'}
+        onClick={() => (g.connected ? confirm('¿Desconectar Google?') && g.disconnect() : g.connect())}>
+        <GoogleLogo />
+        <span className="dot" style={{ background: g.connected ? 'var(--green)' : 'var(--faint)' }} />
+      </button>
     </div>
   )
 }

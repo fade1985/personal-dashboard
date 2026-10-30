@@ -134,7 +134,7 @@ export default function Games() {
           </div>
         </Card>
 
-        <Card className="span-4" i={1} accent={RELEASE_COLOR} style={{ height: '100%' }}>
+        <Card className="span-4 releases-card" i={1} accent={RELEASE_COLOR} style={{ height: '100%' }}>
           <CardTitle icon={<CalendarClock size={16} />} color={RELEASE_COLOR} title="Próximos lanzamientos"
             right={<button className="btn sm ghost" onClick={() => go('calendar')}>Calendario</button>} />
           {upcoming.length === 0 ? (

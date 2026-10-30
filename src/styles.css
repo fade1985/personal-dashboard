@@ -104,6 +104,11 @@ a { color: inherit; }
 .nav-item.active::before { content: ''; position: absolute; left: -14px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--c); box-shadow: 0 0 12px var(--c); }
 .nav-item:disabled { opacity: .4; cursor: default; }
 .nav-item .soon { margin-left: auto; font-size: 10px; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.05); color: var(--faint); }
+.sidebar-mini { display: none; }
+.mini-btn { position: relative; width: 40px; height: 40px; display: grid; place-items: center; padding: 0; border-radius: 12px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--muted); flex-shrink: 0; }
+.mini-btn:hover:not(:disabled) { background: rgba(255,255,255,.08); color: var(--text); }
+.mini-btn.err { color: #fca5a5; border-color: rgba(248,113,113,.35); }
+.mini-btn .dot { position: absolute; right: 5px; bottom: 5px; width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--panel-solid); }
 .nav-badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--c); color: #0b0d17; }
 
 .backup-row { display: flex; gap: 4px; margin-top: 8px; }
@@ -592,12 +597,12 @@ button.stat-tile:hover { background: rgba(255,255,255,.08); transform: translate
 .chip-n { font-size: 11px; opacity: .6; margin-left: 6px; font-weight: 600; }
 .games-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 
-.release-list { display: grid; gap: 4px; }
+.release-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .release-row { display: flex; align-items: center; gap: 12px; padding: 7px; border: 0; background: none; border-radius: 12px; text-align: left; transition: background .15s; width: 100%; }
 .release-row:hover { background: rgba(255,255,255,.05); }
 .release-row img { width: 56px; height: 38px; object-fit: cover; border-radius: 8px; background: rgba(255,255,255,.06); flex-shrink: 0; }
 .release-noimg { width: 56px; height: 38px; border-radius: 8px; background: rgba(232,121,249,.1); display: grid; place-items: center; flex-shrink: 0; }
-.release-count { font-size: 12px; font-weight: 700; color: #f5d0fe; background: rgba(232,121,249,.15); padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.release-count { font-size: 12px; font-weight: 700; color: #f5d0fe; background: rgba(232,121,249,.15); padding: 3px 9px; border-radius: 99px; white-space: nowrap; flex-shrink: 0; }
 
 .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .game-card { display: block; padding: 0; text-align: left; border-radius: 18px; overflow: hidden; border: 1px solid var(--border); background: var(--panel);
@@ -653,6 +658,19 @@ textarea.input { resize: vertical; font-family: inherit; }
   .span-3, .span-4, .span-5 { grid-column: span 6; }
   .span-7, .span-8 { grid-column: span 12; }
   .cal-layout { grid-template-columns: 1fr; }
+  .releases-card { grid-column: span 12; }
+}
+/* Tablet: la barra lateral se queda en iconos para dejar sitio al contenido */
+@media (min-width: 781px) and (max-width: 1100px) {
+  .app { grid-template-columns: 76px 1fr; }
+  .sidebar { padding: 18px 12px; align-items: center; }
+  .brand { padding: 4px 0 20px; }
+  .brand > div:last-child, .nav-text, .nav-label, .nav-item:disabled, .sidebar-foot, .backup-row { display: none; }
+  .nav-item { padding: 6px; }
+  .nav-icon { width: 40px; height: 40px; border-radius: 12px; }
+  .nav-item.active { background: none; }
+  .nav-item.active::before { left: -12px; }
+  .sidebar-mini { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
 }
 @media (max-width: 1000px) {
   .span-6 { grid-column: span 12; }
@@ -663,6 +681,7 @@ textarea.input { resize: vertical; font-family: inherit; }
   .app { grid-template-columns: 1fr; }
   .sidebar { position: sticky; height: auto; flex-direction: row; overflow-x: auto; padding: 10px 12px; z-index: 30; border-right: 0; border-bottom: 1px solid var(--border); }
   .brand, .nav-label, .sidebar-foot, .backup-row, .nav-item:disabled { display: none; }
+  .sidebar-mini { display: flex; gap: 6px; margin-left: auto; padding-left: 8px; }
   .nav-item { white-space: nowrap; }
   .nav-item.active::before { display: none; }
   .main { padding: 22px 16px 60px; }
