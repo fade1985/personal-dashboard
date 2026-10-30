@@ -28,7 +28,7 @@ function greeting(h: number) {
   return ['Buenas noches', '🌙']
 }
 
-function useInbox(connected: boolean) {
+export function useInbox(connected: boolean) {
   const [mails, setMails] = useState<Mail[]>([])
   const [unread, setUnread] = useState(0)
   const [loading, setLoading] = useState(false)

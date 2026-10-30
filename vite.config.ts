@@ -6,6 +6,8 @@ export default defineConfig(({ mode }) => {
   const rawgKey = env.RAWG_KEY ?? ''
   return {
     plugins: [react()],
+    // Dos páginas: el dashboard (index.html) y la propuesta de diseño de Inicio (preview.html)
+    build: { rollupOptions: { input: { main: 'index.html', preview: 'preview.html' } } },
     // El navegador solo ve si hay clave, nunca la clave
     define: { __RAWG__: JSON.stringify(Boolean(rawgKey)) },
     server: {
