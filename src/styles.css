@@ -109,6 +109,13 @@ a { color: inherit; }
 .backup-row { display: flex; gap: 4px; margin-top: 8px; }
 .backup-row .btn { flex: 1; justify-content: center; font-size: 12px; color: var(--faint); }
 .sidebar-foot { margin-top: auto; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+.sync-line { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; line-height: 1.4; }
+.sync-line > svg { flex-shrink: 0; }
+.sync-line > span { flex: 1; min-width: 0; }
+.sync-line.err { color: #fca5a5; }
+.sync-line .icon-btn { width: 24px; height: 24px; border-radius: 8px; color: inherit; }
+.sync-line .icon-btn:disabled { opacity: .6; }
+.sync-line .link { padding: 0; border: 0; background: none; color: var(--text); text-decoration: underline; font: inherit; cursor: pointer; }
 
 .main { padding: 28px clamp(16px, 1.6vw, 28px) 60px; width: 100%; min-width: 0; max-width: 1800px; margin: 0 auto; }
 

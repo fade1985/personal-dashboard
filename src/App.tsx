@@ -1,9 +1,11 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
-  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Joystick, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings, Download, Upload,
+  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Joystick, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings, Download, Upload, Cloud, CloudOff, RefreshCw,
 } from 'lucide-react'
 import { useGoogle } from './lib/google'
 import { exportAll, importAll } from './lib/storage'
+import { syncNow, useAutoSync, useSyncStatus } from './lib/sync'
+import { relTime } from './components/ui'
 import { GoogleCtx, SECTION_COLOR, go, useGoogleCtx, type SectionId } from './lib/nav'
 import Home from './sections/Home'
 import CalendarSection from './sections/CalendarSection'
@@ -34,6 +36,7 @@ function currentHash(): SectionId {
 
 export default function App() {
   const google = useGoogle()
+  useAutoSync(google.connected)
   const [section, setSection] = useState<SectionId>(currentHash)
 
   useEffect(() => {
@@ -80,6 +83,7 @@ export default function App() {
           ))}
           <div className="sidebar-foot">
             <GoogleButton />
+            <SyncLine />
           </div>
           <BackupButtons />
         </aside>
@@ -113,6 +117,37 @@ function BackupButtons() {
           if (f && confirm('Se sobrescribirán los datos de este navegador con los de la copia. ¿Seguir?')) restore(f)
         }} />
       </label>
+    </div>
+  )
+}
+
+/** Estado de la sincronización con Drive, debajo del botón de Google. */
+function SyncLine() {
+  const g = useGoogleCtx()
+  const s = useSyncStatus()
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  if (!g.configured || !g.connected) return null
+  if (s.kind === 'off')
+    return (
+      <div className="sync-line faint">
+        <CloudOff size={13} />
+        <span>Sin sincronizar: <button className="link" onClick={g.connect}>reconecta</button> para dar acceso a Drive</span>
+      </div>
+    )
+  const when = !s.at ? '' : Date.now() - s.at < 60_000 ? 'ahora mismo' : relTime(new Date(s.at))
+  return (
+    <div className={`sync-line ${s.kind === 'error' ? 'err' : 'faint'}`} title={s.kind === 'error' ? s.message : 'Tus datos se guardan en tu Google Drive'}>
+      {s.kind === 'error' ? <CloudOff size={13} /> : <Cloud size={13} />}
+      <span>
+        {s.kind === 'syncing' ? 'Sincronizando…' : s.kind === 'error' ? 'Error al sincronizar' : `Sincronizado ${when}`}
+      </span>
+      <button className="icon-btn" onClick={() => syncNow()} disabled={s.kind === 'syncing'} title="Sincronizar ahora">
+        <RefreshCw size={12} className={s.kind === 'syncing' ? 'spin' : ''} />
+      </button>
     </div>
   )
 }

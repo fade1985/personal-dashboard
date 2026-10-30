@@ -1,4 +1,4 @@
-// Conexión con Google (Calendar + Gmail) solo desde el navegador, con OAuth 2.0
+// Conexión con Google (Calendar, Gmail y Drive para sincronizar) solo desde el navegador, con OAuth 2.0
 // por redirección (sin ventanas emergentes, que se cuelgan en algunos navegadores).
 // No hay backend: el token se guarda en localStorage y caduca en ~1 h; al volver
 // a abrir el dashboard se renueva solo con una redirección silenciosa (prompt=none).
@@ -6,10 +6,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/userinfo.email',
+  // Solo la carpeta oculta de la app en Drive (no ve el resto de archivos): ahí va la sincronización
+  DRIVE_SCOPE,
 ].join(' ')
 const TOKEN_KEY = 'pd:google-token'
 const CONNECTED_KEY = 'pd:google-connected'
@@ -29,6 +32,16 @@ function storedToken(): string | null {
     return Date.now() < exp - 60_000 ? token : null
   } catch {
     return null
+  }
+}
+
+/** Si el token actual incluye Drive (los tokens de antes de añadir la sincronización no lo tienen). */
+export function hasDriveAccess(): boolean {
+  try {
+    const { token, exp, scope } = JSON.parse(localStorage.getItem(TOKEN_KEY) ?? '{}')
+    return Boolean(token) && Date.now() < exp - 60_000 && (scope == null || String(scope).includes(DRIVE_SCOPE))
+  } catch {
+    return false
   }
 }
 
@@ -91,7 +104,11 @@ let redirectError: string | null = null
   }
   localStorage.setItem(
     TOKEN_KEY,
-    JSON.stringify({ token: h.get('access_token'), exp: Date.now() + Number(h.get('expires_in') ?? 3600) * 1000 }),
+    JSON.stringify({
+      token: h.get('access_token'),
+      exp: Date.now() + Number(h.get('expires_in') ?? 3600) * 1000,
+      scope: h.get('scope') ?? '',
+    }),
   )
   localStorage.setItem(CONNECTED_KEY, '1')
 })()
@@ -102,20 +119,26 @@ async function token(): Promise<string> {
   return t
 }
 
-async function gapi<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${await token()}` } })
+export class GoogleError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+  }
+}
+
+export async function gapi<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${await token()}` } })
   if (res.status === 401) {
     localStorage.removeItem(TOKEN_KEY)
-    throw new Error('Sesión de Google caducada: pulsa Conectar')
+    throw new GoogleError('Sesión de Google caducada: pulsa Conectar', 401)
   }
   if (res.status === 403) {
     const j = await res.json().catch(() => null)
     const msg: string = j?.error?.message ?? ''
-    if (/has not been used|is disabled/i.test(msg)) throw new Error('Activa la API en Google Cloud (Biblioteca de APIs)')
-    if (/insufficient/i.test(msg)) throw new Error('Faltan permisos: desconecta y vuelve a conectar marcando todas las casillas')
-    throw new Error(`Google API 403: ${msg}`)
+    if (/has not been used|is disabled/i.test(msg)) throw new GoogleError('Activa la API en Google Cloud (Biblioteca de APIs)', 403)
+    if (/insufficient/i.test(msg)) throw new GoogleError('Faltan permisos: desconecta y vuelve a conectar marcando todas las casillas', 403)
+    throw new GoogleError(`Google API 403: ${msg}`, 403)
   }
-  if (!res.ok) throw new Error(`Google API ${res.status}`)
+  if (!res.ok) throw new GoogleError(`Google API ${res.status}`, res.status)
   return res.json()
 }
 
