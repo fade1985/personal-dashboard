@@ -2,6 +2,7 @@
 // de Trade Republic, así el precio coincide con la app); si no está ahí, o con un símbolo, Yahoo Finance.
 //   /api/quote?q=US84615Q1031&q=AAPL  → precio actual en euros de cada ISIN o símbolo
 //   /api/quote?search=spacex          → candidatos (símbolo, mercado) para elegir el bueno
+//   /api/quote?history=US84615Q1031   → precios del día y cierres diarios de siempre, para la ficha
 // Los precios en otras monedas se pasan a euros con el cambio del momento.
 
 const UA = { 'user-agent': 'Mozilla/5.0 (compatible; mi-dashboard)' }
@@ -23,9 +24,15 @@ export interface Quote {
   /** Precio en la moneda del mercado */
   native: number
   time: number
-  /** Precios del día (euros), cada 5 minutos */
+  /** Precios del día (euros), cada 5 minutos; en los fondos, que tienen un valor al día, el último mes */
   spark: number[]
+  /** Fondo con un solo valor liquidativo al día */
+  daily?: boolean
 }
+
+/** [hora UTC en ms, precio en euros] */
+type Point = [number, number]
+export interface History { intraday: Point[]; daily: Point[] }
 
 async function json<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: UA })
@@ -42,18 +49,22 @@ async function search(q: string): Promise<Candidate[]> {
 }
 
 interface Chart {
-  symbol: string; name: string; exchange: string; currency: string; price: number; prevClose: number; time: number; closes: number[]
+  symbol: string; name: string; exchange: string; currency: string; price: number; prevClose: number; time: number; closes: number[]; times: number[]
 }
 
-async function chart(symbol: string): Promise<Chart> {
-  type R = { chart: { result?: { meta: Record<string, unknown>; indicators: { quote: { close?: (number | null)[] }[] } }[]; error?: { description?: string } } }
-  const r = await json<R>(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=5m`)
+async function chart(symbol: string, range = '1d', interval = '5m'): Promise<Chart> {
+  type R = { chart: { result?: { meta: Record<string, unknown>; timestamp?: number[]; indicators: { quote: { close?: (number | null)[] }[] } }[]; error?: { description?: string } } }
+  const r = await json<R>(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`)
   const res = r.chart.result?.[0]
   if (!res) throw new Error(r.chart.error?.description ?? 'Sin datos')
   const m = res.meta as Record<string, number & string>
   let price = Number(m.regularMarketPrice)
   let prev = Number(m.chartPreviousClose ?? m.previousClose ?? price)
-  let closes = (res.indicators.quote[0]?.close ?? []).filter((v): v is number => v != null)
+  const raw = res.indicators.quote[0]?.close ?? []
+  const ts = res.timestamp ?? []
+  const keep = raw.map((v, i) => i).filter((i) => raw[i] != null && ts[i] != null)
+  let closes = keep.map((i) => raw[i] as number)
+  const times = keep.map((i) => ts[i] * 1000)
   let currency = String(m.currency ?? 'EUR')
   // Bolsa de Londres: cotiza en peniques
   if (currency === 'GBp' || currency === 'GBX') {
@@ -62,7 +73,7 @@ async function chart(symbol: string): Promise<Chart> {
   return {
     symbol: String(m.symbol ?? symbol), name: String(m.longName ?? m.shortName ?? symbol),
     exchange: String(m.fullExchangeName ?? m.exchangeName ?? ''), currency, price, prevClose: prev,
-    time: Number(m.regularMarketTime ?? 0) * 1000, closes,
+    time: Number(m.regularMarketTime ?? 0) * 1000, closes, times,
   }
 }
 
@@ -75,9 +86,15 @@ const toEur = (cur: string) => {
 
 async function inEur(c: Chart): Promise<Quote> {
   const k = await toEur(c.currency)
+  let closes = c.closes, daily: boolean | undefined
+  // Los fondos no cotizan durante el día: la minigráfica es la del último mes
+  if (closes.length < 2) {
+    closes = await chart(c.symbol, '1mo', '1d').then((m) => m.closes).catch(() => closes)
+    daily = true
+  }
   return {
     symbol: c.symbol, name: c.name, exchange: c.exchange, currency: c.currency, native: c.price, time: c.time,
-    price: c.price * k, prevClose: c.prevClose * k, spark: c.closes.map((v) => v * k),
+    price: c.price * k, prevClose: c.prevClose * k, spark: closes.map((v) => v * k), daily,
   }
 }
 
@@ -94,12 +111,20 @@ function fromBerlin(ts: number) {
   return ts - offset
 }
 
-async function lsQuote(isin: string): Promise<Quote> {
+async function lsFind(isin: string) {
   type S = { id: number; displayname: string; isin: string }[]
   const hit = (await json<S>(`${LS}/.lstc/instrument/search/main?q=${isin}&localeId=1`)).find((x) => x.isin === isin)
   if (!hit) throw new Error('No está en Lang & Schwarz')
-  type C = { info: { plotlines?: { id: string; value: number }[] }; series: { intraday?: { data: [number, number][] } } }
-  const c = await json<C>(`${LS}/instrument/chart/dataForInstrument?instrumentId=${hit.id}&marketId=${LS_EXCHANGE}&quotetype=mid&series=intraday&type=mini&localeId=1`)
+  return hit
+}
+
+type LsChart = { info: { plotlines?: { id: string; value: number }[] }; series: { intraday?: { data: Point[] }; history?: { data: Point[] } } }
+const lsChart = (id: number, series: string) =>
+  json<LsChart>(`${LS}/instrument/chart/dataForInstrument?instrumentId=${id}&marketId=${LS_EXCHANGE}&quotetype=mid&series=${series}&type=mini&localeId=1`)
+
+async function lsQuote(isin: string): Promise<Quote> {
+  const hit = await lsFind(isin)
+  const c = await lsChart(hit.id, 'intraday')
   const data = c.series.intraday?.data ?? []
   const last = data.at(-1)
   if (!last) throw new Error('Lang & Schwarz sin precios')
@@ -123,21 +148,48 @@ async function resolve(q: string): Promise<Quote> {
   } catch {
     // Seguimos con Yahoo
   }
+  return inEur(await yahooPick(q))
+}
+
+/** El mercado de Yahoo para un ISIN: el que se haya movido más recientemente, con ventaja para el que cotiza en euros. */
+async function yahooPick(q: string): Promise<Chart> {
   const found = (await search(q)).filter((c) => c.type !== 'OPTION')
   if (!found.length) throw new Error('No encontrado: elige el símbolo a mano')
   const eur = EUR_SUFFIX.map((s) => found.find((c) => c.symbol.endsWith(s))).find(Boolean)
   const picks = [...new Set([found[0].symbol, eur?.symbol].filter(Boolean) as string[])]
-  const charts = (await Promise.allSettled(picks.map(chart))).flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+  const charts = (await Promise.allSettled(picks.map((s) => chart(s)))).flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
   if (!charts.length) throw new Error('Sin cotización')
   // 15 minutos de margen a favor del mercado en euros
   charts.sort((a, b) => (b.time + (b.currency === 'EUR' ? 15 * 60e3 : 0)) - (a.time + (a.currency === 'EUR' ? 15 * 60e3 : 0)))
-  return inEur(charts[0])
+  return charts[0]
+}
+
+/** Histórico para la ficha: el día (de minuto en minuto o cada 5) y un cierre por día desde que cotiza. */
+async function history(q: string): Promise<History> {
+  if (ISIN.test(q)) {
+    const hit = await lsFind(q).catch(() => null)
+    if (hit) {
+      const c = await lsChart(hit.id, 'intraday,history')
+      const fix = (d: Point[] = []) => d.map(([t, v]): Point => [fromBerlin(t), v])
+      return { intraday: fix(c.series.intraday?.data), daily: fix(c.series.history?.data) }
+    }
+  }
+  const symbol = ISIN.test(q) ? (await yahooPick(q)).symbol : q
+  const [day, all] = await Promise.all([chart(symbol, '1d', '5m'), chart(symbol, '10y', '1d')])
+  const k = await toEur(all.currency)
+  const pts = (c: Chart) => c.closes.map((v, i): Point => [c.times[i], v * k])
+  return { intraday: pts(day), daily: pts(all) }
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const text = url.searchParams.get('search')
+  const hist = url.searchParams.get('history')?.trim().toUpperCase()
   try {
+    if (hist) {
+      if (!/^[A-Z0-9.=^-]{1,20}$/.test(hist)) return Response.json({ error: 'Símbolo no válido' }, { status: 400 })
+      return Response.json(await history(hist), { headers: { 'cache-control': 's-maxage=300, stale-while-revalidate=300' } })
+    }
     if (text) {
       return Response.json(await search(text.slice(0, 60)), { headers: { 'cache-control': 's-maxage=3600' } })
     }

@@ -1,7 +1,7 @@
 // Cartera: posiciones (ISIN + compras) que se valoran con cotizaciones en vivo de /api/quote.
 // Las posiciones viajan con el resto de datos; las cotizaciones son caché de este navegador.
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePersistentState } from './storage'
 
 export interface Lot {
@@ -34,6 +34,8 @@ export interface Quote {
   native: number
   time: number
   spark: number[]
+  /** Fondo: un valor liquidativo al día (la minigráfica es del último mes) */
+  daily?: boolean
 }
 
 type QuoteResult = Quote | { error: string }
@@ -157,4 +159,34 @@ export async function searchSymbols(text: string): Promise<{ symbol: string; nam
   const r = await fetch(`/api/quote?search=${encodeURIComponent(text)}`)
   if (!r.ok) throw new Error(`Error ${r.status}`)
   return r.json()
+}
+
+/** [hora en ms, precio en euros] */
+export type Point = [number, number]
+export interface History { intraday: Point[]; daily: Point[] }
+
+const histories = new Map<string, { at: number; p: Promise<History> }>()
+
+/** Histórico de una cotización para la ficha (en memoria cinco minutos). */
+export function useHistory(key: string) {
+  const [state, setState] = useState<{ key: string; data?: History; error?: string }>({ key })
+  useEffect(() => {
+    let alive = true
+    let hit = histories.get(key)
+    if (!hit || Date.now() - hit.at > 5 * 60e3) {
+      hit = {
+        at: Date.now(),
+        p: fetch(`/api/quote?history=${encodeURIComponent(key)}`).then(async (r) => {
+          const j = await r.json()
+          if (!r.ok || j.error) throw new Error(j.error ?? String(r.status))
+          return j as History
+        }),
+      }
+      hit.p.catch(() => histories.delete(key))
+      histories.set(key, hit)
+    }
+    hit.p.then((data) => alive && setState({ key, data }), (e: Error) => alive && setState({ key, error: e.message }))
+    return () => { alive = false }
+  }, [key])
+  return state.key === key ? state : { key }
 }

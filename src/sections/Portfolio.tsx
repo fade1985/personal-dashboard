@@ -5,6 +5,7 @@ import { Card, CardTitle } from '../components/ui'
 import { eur, type Account } from '../lib/finance'
 import { position, quoteKey, searchSymbols, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
 import { Money } from './Finance'
+import { HoldingDetail } from './PortfolioDetail'
 
 const C = '#22d3ee'
 
@@ -42,6 +43,9 @@ function Spark({ points, up }: { points: number[]; up: boolean }) {
 export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number }) {
   const { positions, totals, updatedAt, setHoldings } = usePortfolio()
   const [editing, setEditing] = useState<Holding | 'new' | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)
+  const shown = positions.find((p) => p.holding.id === viewing)
+  const shownAccount = shown && accounts.find((a) => a.id === shown.holding.accountId)
   const invest = accounts.filter((a) => a.kind === 'invest')
   // Fines de semana y festivos: el cambio es el de la última sesión
   const lastTrade = Math.max(0, ...positions.map((p) => p.quote?.time ?? 0))
@@ -73,13 +77,20 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
       )}
       {positions.length ? (
         <div className="pf-list">
-          {positions.map((p) => <Row key={p.holding.id} p={p} account={accounts.find((a) => a.id === p.holding.accountId)} onEdit={() => setEditing(p.holding)} />)}
+          {positions.map((p) => <Row key={p.holding.id} p={p} account={accounts.find((a) => a.id === p.holding.accountId)} onOpen={() => setViewing(p.holding.id)} />)}
         </div>
       ) : (
         <div className="empty">
           <div className="big">📈</div>
           <p>Añade tus acciones o fondos con su ISIN y tus compras: el valor se actualiza solo con la cotización.</p>
         </div>
+      )}
+      {shown && !editing && createPortal(
+        <HoldingDetail
+          p={shown} total={totals?.value ?? 0} accountName={shownAccount?.name} color={shownAccount?.color ?? C}
+          onEdit={() => setEditing(shown.holding)} onClose={() => setViewing(null)}
+        />,
+        document.body,
       )}
       {editing && createPortal(
         <HoldingModal
@@ -92,6 +103,7 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
           onDelete={(id) => {
             setHoldings((l) => l.filter((x) => x.id !== id))
             setEditing(null)
+            setViewing(null)
           }}
         />,
         document.body,
@@ -100,11 +112,11 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
   )
 }
 
-function Row({ p, account, onEdit }: { p: Position; account?: Account; onEdit: () => void }) {
+function Row({ p, account, onOpen }: { p: Position; account?: Account; onOpen: () => void }) {
   const q = p.quote
   const initials = p.holding.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
   return (
-    <button className="pf-row" onClick={onEdit} style={{ '--ac': account?.color ?? C } as CSSProperties}>
+    <button className="pf-row" onClick={onOpen} style={{ '--ac': account?.color ?? C } as CSSProperties}>
       <span className="pf-logo">{initials}</span>
       <span className="pf-main">
         <b>{p.holding.name}</b>
@@ -113,13 +125,13 @@ function Row({ p, account, onEdit }: { p: Position; account?: Account; onEdit: (
           {q ? <> · {q.symbol === p.holding.isin ? '' : `${q.symbol} · `}{q.exchange}</> : p.error ? <> · <span className="neg">{p.error}</span></> : ' · cargando…'}
         </small>
       </span>
-      <Spark points={q?.spark ?? []} up={(p.day ?? 0) >= 0} />
+      <Spark points={q?.spark ?? []} up={q?.daily ? (q.spark.at(-1) ?? 0) >= (q.spark[0] ?? 0) : (p.day ?? 0) >= 0} />
       <span className="pf-price">
         {q ? <>{eur(q.price)}{q.currency !== 'EUR' && <small>{q.native.toLocaleString('es-ES', { style: 'currency', currency: q.currency })}</small>}</> : '—'}
       </span>
       <span className="pf-figs">
         <b>{p.value != null ? <Money v={p.value} /> : <Money v={p.cost} />}</b>
-        {p.dayPct != null && <small className={p.dayPct >= 0 ? 'pos' : 'neg'}>{p.quote && new Date(p.quote.time).toDateString() !== new Date().toDateString() ? 'Últ. sesión' : 'Hoy'} {pct(p.dayPct)}</small>}
+        {p.dayPct != null && <small className={p.dayPct >= 0 ? 'pos' : 'neg'}>{q?.daily ? 'Últ. valor' : q && new Date(q.time).toDateString() !== new Date().toDateString() ? 'Últ. sesión' : 'Hoy'} {pct(p.dayPct)}</small>}
         {p.gain != null && <small className={p.gain >= 0 ? 'pos' : 'neg'}><Money v={p.gain} sign /> ({pct(p.gainPct!)})</small>}
       </span>
     </button>

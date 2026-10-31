@@ -738,6 +738,50 @@ textarea.input { resize: vertical; font-family: inherit; }
 .pf-sum span { display: grid; gap: 2px; }
 .pf-sum small { font-size: 11.5px; color: var(--faint); }
 .pf-sum b { font-variant-numeric: tabular-nums; }
+.modal.single.pfd { width: min(780px, 100%); }
+.pfd-top { display: flex; align-items: center; gap: 14px; padding-right: 40px; }
+.pfd-top .pf-logo { flex-shrink: 0; }
+.pfd-top h2 { margin: 0 !important; font-size: 24px; }
+.pfd-top small { font-size: 12.5px; }
+.pfd-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 18px 0 12px; }
+.pfd-price > b { font-family: var(--display); font-size: 36px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.pfd-price > span { font-weight: 600; font-variant-numeric: tabular-nums; }
+.pfd-price > span small { color: var(--faint); font-weight: 500; }
+.pfd-price > small { flex-basis: 100%; font-size: 12.5px; }
+.pfd-ranges { display: flex; gap: 4px; margin-bottom: 8px; overflow-x: auto; }
+.pfd-ranges button { flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.pfd-ranges button:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.pfd-ranges button.on { color: var(--text); background: color-mix(in srgb, var(--ac) 18%, transparent); border-color: color-mix(in srgb, var(--ac) 40%, transparent); }
+.pfd-chart { position: relative; height: 270px; touch-action: pan-y; user-select: none; cursor: crosshair; }
+.pfd-chart svg { display: block; overflow: visible; }
+.pfd-empty { display: grid; place-items: center; color: var(--faint); font-size: 13px; cursor: default; border-radius: 16px; background: rgba(255, 255, 255, .02); }
+.pfd-ref { stroke: var(--faint); stroke-dasharray: 2 4; stroke-width: 1; opacity: .7; }
+.pfd-avg line { stroke: var(--ac); stroke-dasharray: 6 5; stroke-width: 1.5; opacity: .9; }
+.pfd-avg text { fill: var(--muted); font-size: 11.5px; font-weight: 600; paint-order: stroke; stroke: var(--panel-solid); stroke-width: 4px; }
+.pfd-buy { fill: var(--panel-solid); stroke: var(--ac); stroke-width: 2.5; }
+.pfd-axis { fill: var(--faint); font-size: 11px; }
+.pfd-cross { stroke: var(--muted); stroke-width: 1; opacity: .6; }
+.pfd-tip { position: absolute; top: 0; transform: translateX(-50%); display: grid; justify-items: center; gap: 1px; padding: 6px 10px; border-radius: 10px; background: var(--panel-solid); border: 1px solid var(--border-2); box-shadow: 0 10px 24px -10px rgba(0, 0, 0, .7); pointer-events: none; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; z-index: 1; }
+.pfd-tip span { font-size: 12px; font-weight: 600; }
+.pfd-tip small { color: var(--faint); font-size: 11px; }
+.pfd-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; margin-top: 6px; }
+.pfd-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.pfd-key { display: inline-block; width: 16px; height: 0; border-top: 2px dashed var(--ac); }
+.pfd-key.buy { width: 10px; height: 10px; border: 2.5px solid var(--ac); border-radius: 50%; }
+.pfd-key.ref { border-top: 1.5px dotted var(--faint); }
+.pfd-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin-top: 20px; border-radius: 16px; overflow: hidden; background: var(--border); border: 1px solid var(--border); }
+.pfd-stats > div { display: grid; align-content: start; gap: 3px; padding: 12px 14px; background: var(--panel-solid); }
+.pfd-stats small { font-size: 12px; color: var(--faint); }
+.pfd-stats b { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfd-stats em { display: block; font-style: normal; font-size: 12.5px; font-weight: 600; opacity: .85; }
+.pfd-h3 { margin: 22px 0 8px; font-size: 15px; }
+.pfd-lots { display: grid; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.pfd-lot { display: grid; grid-template-columns: 1fr .9fr 1fr 1fr 1.4fr; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.pfd-lot > span:nth-child(n+2) { text-align: right; }
+.pfd-lot.head { font-size: 12px; color: var(--faint); padding-top: 0; }
+.pfd-lot small { font-size: 11.5px; opacity: .85; white-space: nowrap; }
+.pfd-lot > span:last-child { white-space: nowrap; }
+.pfd-edit { margin-top: 18px; }
 @media (max-width: 700px) {
   .pf-head { gap: 12px 28px; }
   .pf-head > div:first-child, .pf-head > div:last-child { flex-basis: 100%; }
@@ -746,4 +790,9 @@ textarea.input { resize: vertical; font-family: inherit; }
   .pf-lot { grid-template-columns: 1fr 1fr; }
   .pf-lot.head { display: none; }
   .pf-lot .icon-btn { justify-self: end; }
+  .pfd-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pfd-price > b { font-size: 30px; }
+  .pfd-ranges button { flex: 1 1 0; padding: 6px 4px; }
+  .pfd-lot { grid-template-columns: 1fr 1fr 1.3fr; }
+  .pfd-lot > span:nth-child(2), .pfd-lot > span:nth-child(3) { display: none; }
 }
