@@ -11,13 +11,15 @@ export default defineConfig(({ mode }) => {
         // En desarrollo, /api/quote lo sirve la misma función que en Vercel
         name: 'api-quote',
         configureServer(server) {
-          server.middlewares.use('/api/quote', async (req, res) => {
-            const mod = await server.ssrLoadModule('/api/quote.ts')
-            const out: Response = await mod.GET(new Request(`http://localhost${req.originalUrl}`))
-            res.statusCode = out.status
-            res.setHeader('content-type', 'application/json')
-            res.end(await out.text())
-          })
+          for (const name of ['quote', 'steam']) {
+            server.middlewares.use(`/api/${name}`, async (req, res) => {
+              const mod = await server.ssrLoadModule(`/api/${name}.ts`)
+              const out: Response = await mod.GET(new Request(`http://localhost${req.originalUrl}`))
+              res.statusCode = out.status
+              res.setHeader('content-type', 'application/json')
+              res.end(await out.text())
+            })
+          }
         },
       },
     ],

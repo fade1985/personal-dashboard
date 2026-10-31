@@ -14,6 +14,8 @@ export type GameStatus = 'backlog' | 'playing' | 'done' | 'dropped'
 export interface Game {
   id: string
   rawgId?: number
+  /** Juegos que solo están en Steam */
+  steamId?: number
   slug?: string
   name: string
   image?: string
@@ -77,7 +79,7 @@ interface RawgGame {
   genres?: { name: string }[]
 }
 
-export type GameInfo = Pick<Game, 'rawgId' | 'slug' | 'name' | 'image' | 'released' | 'tba' | 'platforms' | 'genres' | 'metacritic'>
+export type GameInfo = Pick<Game, 'rawgId' | 'steamId' | 'slug' | 'name' | 'image' | 'released' | 'tba' | 'platforms' | 'genres' | 'metacritic'>
 
 const toInfo = (g: RawgGame): GameInfo => ({
   rawgId: g.id,
@@ -124,6 +126,23 @@ export async function fetchGame(rawgId: number): Promise<GameInfo> {
   return toInfo(await rawg<RawgGame>(`/games/${rawgId}`))
 }
 
+// ---------- Steam (para lo que no está en RAWG) ----------
+
+export interface SteamHit { steamId: number; name: string; image: string }
+
+export async function searchSteam(q: string): Promise<SteamHit[]> {
+  const r = await fetch(`/api/steam?search=${encodeURIComponent(q)}`)
+  if (!r.ok) throw new Error(`Steam ${r.status}`)
+  return r.json()
+}
+
+export async function fetchSteam(id: number): Promise<GameInfo> {
+  const r = await fetch(`/api/steam?app=${id}`)
+  const j = await r.json()
+  if (!r.ok || j.error) throw new Error(j.error ?? `Steam ${r.status}`)
+  return j as GameInfo
+}
+
 /** Lanzamientos más esperados de los próximos meses (para descubrir). */
 export async function upcomingReleases(): Promise<GameInfo[]> {
   const t = todayYmd()
@@ -145,17 +164,16 @@ export function useReleaseWatcher() {
   const [games, setGames] = useGames()
 
   useEffect(() => {
-    if (!rawgEnabled) return
     const last = readStore<number>(CHECK_KEY, 0)
     if (Date.now() - last < 20 * 3600_000) return
-    const watch = games.filter((g) => g.rawgId && g.status !== 'done' && g.status !== 'dropped' && (g.waiting || isUpcoming(g)))
+    const watch = games.filter((g) => (rawgEnabled ? g.rawgId || g.steamId : g.steamId) && g.status !== 'done' && g.status !== 'dropped' && (g.waiting || isUpcoming(g)))
     if (!watch.length) return
     writeStore(CHECK_KEY, Date.now())
-    Promise.allSettled(watch.map((g) => fetchGame(g.rawgId!))).then((res) => {
-      const fresh = new Map<number, GameInfo>()
-      res.forEach((r) => r.status === 'fulfilled' && fresh.set(r.value.rawgId!, r.value))
+    Promise.allSettled(watch.map((g) => (g.rawgId ? fetchGame(g.rawgId) : fetchSteam(g.steamId!)).then((info) => [g.id, info] as const))).then((res) => {
+      const fresh = new Map<string, GameInfo>()
+      res.forEach((r) => r.status === 'fulfilled' && fresh.set(r.value[0], r.value[1]))
       setGames((l) => l.map((g) => {
-        const f = g.rawgId ? fresh.get(g.rawgId) : undefined
+        const f = fresh.get(g.id)
         return f ? { ...g, released: f.released, tba: f.tba, image: g.image ?? f.image, platforms: f.platforms ?? g.platforms } : g
       }))
     })

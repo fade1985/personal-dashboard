@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ArrowUpDown, Bell, BellRing, CalendarClock, Download, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, Upload, X } from 'lucide-react'
+import { ArrowUpDown, Bell, LayoutGrid, Layers, List, GalleryVerticalEnd, BellRing, CalendarClock, Download, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, Upload, X } from 'lucide-react'
 import { SECTION_COLOR, go } from '../lib/nav'
 import { usePersistentState } from '../lib/storage'
 import { Card, CardTitle, CountUp } from '../components/ui'
 import {
-  RELEASE_COLOR, STATUS_META, cover, daysUntil, fetchGame, isUpcoming, rawgEnabled, searchGames, todayYmd, upcomingReleases, useGames,
-  useReleaseWatcher, type Game, type GameInfo, type GameStatus,
+  RELEASE_COLOR, STATUS_META, cover, daysUntil, fetchGame, fetchSteam, isUpcoming, rawgEnabled, searchGames, searchSteam, todayYmd, upcomingReleases, useGames,
+  useReleaseWatcher, type Game, type GameInfo, type GameStatus, type SteamHit,
 } from '../lib/games'
 
 const C = SECTION_COLOR.games
@@ -19,6 +19,17 @@ const SORTS: { id: Sort; label: string }[] = [
   { id: 'release', label: 'Fecha de salida' },
   { id: 'rating', label: 'Mi nota' },
   { id: 'metacritic', label: 'Metacritic' },
+]
+
+type View = 'cards' | 'list' | 'covers'
+type Group = 'none' | 'status' | 'platform' | 'genre' | 'year'
+
+const GROUPS: { id: Group; label: string }[] = [
+  { id: 'none', label: 'Sin agrupar' },
+  { id: 'status', label: 'Por estado' },
+  { id: 'platform', label: 'Por mi plataforma' },
+  { id: 'genre', label: 'Por género' },
+  { id: 'year', label: 'Por año de salida' },
 ]
 
 const byName = (a: Game, b: Game) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base', numeric: true })
@@ -49,7 +60,7 @@ function releaseLabel(g: Pick<Game, 'released' | 'tba'>) {
 }
 
 function addFromInfo(list: Game[], info: GameInfo, status: GameStatus): Game[] {
-  const id = info.rawgId ? `rawg-${info.rawgId}` : crypto.randomUUID()
+  const id = info.rawgId ? `rawg-${info.rawgId}` : info.steamId ? `steam-${info.steamId}` : crypto.randomUUID()
   const prev = list.find((g) => g.id === id)
   const upcoming = isUpcoming({ ...info, status } as Game)
   const game: Game = {
@@ -71,6 +82,8 @@ export default function Games() {
   const [toast, setToast] = useState<string | null>(null)
   const [sort, setSort] = usePersistentState<Sort>('games-sort', 'auto')
   const [filter, setFilter] = useState('')
+  const [view, setView] = usePersistentState<View>('games-view', 'cards')
+  const [group, setGroup] = usePersistentState<Group>('games-group', 'none')
   const [perm, setPerm] = useState(() => (typeof Notification === 'undefined' ? 'denied' : Notification.permission))
 
   useEffect(() => {
@@ -95,7 +108,7 @@ export default function Games() {
         const j = JSON.parse(t)
         const incoming: Game[] = Array.isArray(j) ? j : j.games
         if (!Array.isArray(incoming) || incoming.some((g) => !g?.id || !g.name)) throw new Error()
-        const same = (a: Game, b: Game) => a.id === b.id || (a.rawgId != null && a.rawgId === b.rawgId)
+        const same = (a: Game, b: Game) => a.id === b.id || (a.rawgId != null && a.rawgId === b.rawgId) || (a.steamId != null && a.steamId === b.steamId)
         setGames((gs) => [...gs.filter((g) => !incoming.some((n) => same(g, n))), ...incoming])
         setToast(`Importados ${incoming.length} juegos`)
       } catch {
@@ -136,14 +149,28 @@ export default function Games() {
 
   // Pasados agrupados por año
   const groups = useMemo(() => {
-    if (tab !== 'done' || sort !== 'auto') return [{ key: '', items: list }]
+    const keyOf: ((g: Game) => string) | null =
+      group === 'status' ? (g) => (isUpcoming(g, today) && g.status === 'backlog' ? '📅 Por salir' : `${STATUS_META[g.status].emoji} ${STATUS_META[g.status].label}`)
+      : group === 'platform' ? (g) => g.myPlatform || 'Sin elegir plataforma'
+      : group === 'genre' ? (g) => g.genres?.[0] || 'Sin género'
+      : group === 'year' ? (g) => (g.released && !g.tba ? g.released.slice(0, 4) : 'Sin fecha')
+      // Pasados: por año en que te lo pasaste
+      : tab === 'done' && sort === 'auto' ? (g) => g.finishedAt?.slice(0, 4) ?? 'Sin fecha'
+      : null
+    if (!keyOf) return [{ key: '', items: list }]
     const by = new Map<string, Game[]>()
-    for (const g of list) {
-      const k = g.finishedAt?.slice(0, 4) ?? 'Sin fecha'
-      by.set(k, [...(by.get(k) ?? []), g])
+    for (const g of list) by.set(keyOf(g), [...(by.get(keyOf(g)) ?? []), g])
+    const out = [...by.entries()].map(([key, items]) => ({ key, items }))
+    const last = (k: string) => (k.startsWith('Sin ') ? 1 : 0)
+    if (group === 'year') out.sort((a, b) => last(a.key) - last(b.key) || b.key.localeCompare(a.key))
+    else if (group === 'platform' || group === 'genre') out.sort((a, b) => last(a.key) - last(b.key) || b.items.length - a.items.length || a.key.localeCompare(b.key))
+    else if (group === 'status') {
+      const order = ['📅', ...(['playing', 'backlog', 'done', 'dropped'] as GameStatus[]).map((x) => STATUS_META[x].emoji)]
+      out.sort((a, b) => order.findIndex((e) => a.key.startsWith(e)) - order.findIndex((e) => b.key.startsWith(e)))
     }
-    return [...by.entries()].map(([key, items]) => ({ key, items }))
-  }, [list, tab, sort])
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, tab, sort, group])
 
   return (
     <>
@@ -228,10 +255,21 @@ export default function Games() {
           ))}
         </div>
         <div className="games-sort">
+          <div className="games-view" role="group" aria-label="Vista">
+            {([['cards', LayoutGrid, 'Tarjetas'], ['covers', GalleryVerticalEnd, 'Portadas'], ['list', List, 'Lista']] as const).map(([id, Icon, label]) => (
+              <button key={id} className={view === id ? 'on' : ''} onClick={() => setView(id)} title={label} aria-pressed={view === id}><Icon size={16} /></button>
+            ))}
+          </div>
           <div className="fin-search">
             <Search size={15} />
             <input className="input" type="search" placeholder="Filtrar mi lista…" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setFilter('')} />
           </div>
+          <label className="games-sort-sel" title="Agrupar">
+            <Layers size={15} />
+            <select className="input" value={group} onChange={(e) => setGroup(e.target.value as Group)}>
+              {GROUPS.map((o) => <option key={o.id} value={o.id}>{o.id === 'none' && tab === 'done' ? 'Por año en que lo pasé' : o.label}</option>)}
+            </select>
+          </label>
           <label className="games-sort-sel" title="Ordenar">
             <ArrowUpDown size={15} />
             <select className="input" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
@@ -250,9 +288,17 @@ export default function Games() {
         groups.map((gr) => (
           <div key={gr.key}>
             {gr.key && <div className="section-title"><h2>{gr.key} <span className="faint" style={{ fontWeight: 400, fontSize: 15 }}>· {gr.items.length}</span></h2></div>}
-            <div className="game-grid">
-              {gr.items.map((g, k) => <GameCard key={g.id} g={g} i={k} onClick={() => setOpen(g)} />)}
-            </div>
+            {view === 'list' ? (
+              <div className="game-list">
+                {gr.items.map((g) => <GameRow key={g.id} g={g} onClick={() => setOpen(g)} />)}
+              </div>
+            ) : (
+              <div className={`game-grid ${view === 'covers' ? 'covers' : ''}`}>
+                {gr.items.map((g, k) => view === 'covers'
+                  ? <GameTile key={g.id} g={g} i={k} onClick={() => setOpen(g)} />
+                  : <GameCard key={g.id} g={g} i={k} onClick={() => setOpen(g)} />)}
+              </div>
+            )}
           </div>
         ))
       )}
@@ -297,6 +343,8 @@ export function ReleaseAlerts() {
 function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => void; owned: Game[] }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<GameInfo[]>([])
+  const [steam, setSteam] = useState<SteamHit[]>([])
+  const [adding, setAdding] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [focus, setFocus] = useState(false)
@@ -304,15 +352,21 @@ function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => v
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!rawgEnabled || q.trim().length < 2) { setResults([]); return }
+    if (q.trim().length < 2) { setResults([]); setSteam([]); return }
     let alive = true
     const t = setTimeout(() => {
       setLoading(true)
       setError(null)
-      searchGames(q.trim())
-        .then((r) => alive && setResults(r))
-        .catch((e) => alive && setError((e as Error).message))
-        .finally(() => alive && setLoading(false))
+      // RAWG y la tienda de Steam a la vez: lo que no esté en RAWG suele estar en Steam
+      Promise.allSettled([
+        rawgEnabled ? searchGames(q.trim()) : Promise.resolve([]),
+        searchSteam(q.trim()),
+      ]).then(([r, st]) => {
+        if (!alive) return
+        setResults(r.status === 'fulfilled' ? r.value : [])
+        setSteam(st.status === 'fulfilled' ? st.value : [])
+        if (r.status === 'rejected' && st.status === 'rejected') setError((r.reason as Error).message)
+      }).finally(() => alive && setLoading(false))
     }, 350)
     return () => { alive = false; clearTimeout(t) }
   }, [q])
@@ -329,7 +383,22 @@ function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => v
     setManualDate('')
     setFocus(false)
   }
-  const ownedStatus = (info: GameInfo) => owned.find((g) => g.rawgId && g.rawgId === info.rawgId)?.status
+  const ownedStatus = (info: Pick<GameInfo, 'rawgId' | 'steamId'>) =>
+    owned.find((g) => (g.rawgId && g.rawgId === info.rawgId) || (g.steamId && g.steamId === info.steamId))?.status
+  const simple = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, '')
+  const inRawg = new Set(results.map((r) => simple(r.name)))
+  const steamOnly = steam.filter((x) => !inRawg.has(simple(x.name)))
+  const pickSteam = async (hit: SteamHit, s: GameStatus) => {
+    setAdding(hit.steamId)
+    try {
+      pick(await fetchSteam(hit.steamId), s)
+    } catch {
+      // Sin ficha (p. ej. la tienda no responde): lo apuntamos con lo que sabemos
+      pick({ steamId: hit.steamId, name: hit.name, image: hit.image, tba: true }, s)
+    } finally {
+      setAdding(null)
+    }
+  }
 
   return (
     <div className="game-search" ref={box}>
@@ -367,7 +436,27 @@ function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => v
               </div>
             )
           })}
-          {!loading && rawgEnabled && !results.length && !error && <div className="faint" style={{ padding: '12px 14px', fontSize: 13 }}>Sin resultados en RAWG</div>}
+          {steamOnly.length > 0 && <div className="game-results-head">En Steam</div>}
+          {steamOnly.map((r) => {
+            const st = ownedStatus(r)
+            return (
+              <div key={`s${r.steamId}`} className="game-result">
+                <img src={r.image} alt="" loading="lazy" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="tl-title">{r.name}</div>
+                  <div className="tl-sub">Steam · la fecha se toma de la tienda</div>
+                </div>
+                {st ? <span className="pill" style={{ background: STATUS_META[st].color + '22', color: STATUS_META[st].color }}>{STATUS_META[st].emoji} {STATUS_META[st].label}</span> : adding === r.steamId ? <RefreshCw size={15} className="spin" /> : (
+                  <div className="row" style={{ gap: 6 }}>
+                    <button className="btn sm" onClick={() => pickSteam(r, 'backlog')} title="Lo quiero jugar (si aún no ha salido, te aviso)">🎯 Quiero</button>
+                    <button className="btn sm" onClick={() => pickSteam(r, 'playing')}>🕹️</button>
+                    <button className="btn sm" onClick={() => pickSteam(r, 'done')} title="Ya me lo he pasado">🏆</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {!loading && !results.length && !steamOnly.length && !error && <div className="faint" style={{ padding: '12px 14px', fontSize: 13 }}>Sin resultados en RAWG ni en Steam</div>}
           <div className="game-result manual">
             <Plus size={16} />
             <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>Añadir «{q.trim()}» a mano</div>
@@ -383,6 +472,39 @@ function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => v
         </div>
       )}
     </div>
+  )
+}
+
+/** Vista de lista: una fila por juego, con lo importante a la vista. */
+function GameRow({ g, onClick }: { g: Game; onClick: () => void }) {
+  const up = isUpcoming(g)
+  const st = STATUS_META[g.status]
+  return (
+    <button className="game-row" style={{ '--c': up ? RELEASE_COLOR : st.color } as CSSProperties} onClick={onClick}>
+      {g.image ? <img src={cover(g.image)} alt="" loading="lazy" /> : <span className="game-row-noimg">🎮</span>}
+      <span className="game-row-main">
+        <b>{g.name}</b>
+        <small>{[g.myPlatform, g.genres?.slice(0, 2).join(', ')].filter(Boolean).join(' · ') || '—'}</small>
+      </span>
+      <span className="game-row-status">{up ? `📅 ${g.released && !g.tba ? countdown(g.released) : 'Por anunciar'}` : `${st.emoji} ${st.label}`}</span>
+      <span className="game-row-date">
+        {g.status === 'done' && g.finishedAt ? fmtDate(g.finishedAt, { day: 'numeric', month: 'short', year: '2-digit' }) : g.released && !g.tba ? fmtDate(g.released, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+      </span>
+      <span className="game-row-rating">{g.rating ? <span className="stars">{'★'.repeat(g.rating)}<span>{'★'.repeat(5 - g.rating)}</span></span> : ''}</span>
+      <span className="game-row-meta">{g.metacritic ? <span className="game-meta static">{g.metacritic}</span> : ''}</span>
+    </button>
+  )
+}
+
+/** Vista de portadas: muchas a la vez, solo la imagen y el nombre. */
+function GameTile({ g, i, onClick }: { g: Game; i: number; onClick: () => void }) {
+  const up = isUpcoming(g)
+  const st = STATUS_META[g.status]
+  return (
+    <button className="game-tile" style={{ '--i': Math.min(i, 30), '--c': up ? RELEASE_COLOR : st.color } as CSSProperties} onClick={onClick} title={g.name}>
+      {g.image ? <img src={cover(g.image)} alt="" loading="lazy" /> : <span className="game-noimg">🎮</span>}
+      <span className="game-tile-name"><i>{up ? '📅' : st.emoji}</i> {g.name}</span>
+    </button>
   )
 }
 
@@ -445,9 +567,9 @@ function GameModal({ game: g, onClose, onChange, onDelete }: { game: Game; onClo
   const up = isUpcoming(g)
 
   const refresh = () => {
-    if (!g.rawgId) return
+    if (!g.rawgId && !g.steamId) return
     setRefreshing(true)
-    fetchGame(g.rawgId).then((f) => set({ released: f.released, tba: f.tba, image: f.image ?? g.image, platforms: f.platforms, genres: f.genres, metacritic: f.metacritic })).finally(() => setRefreshing(false))
+    ;(g.rawgId ? fetchGame(g.rawgId) : fetchSteam(g.steamId!)).then((f) => set({ released: f.released, tba: f.tba, image: f.image ?? g.image, platforms: f.platforms, genres: f.genres, metacritic: f.metacritic })).finally(() => setRefreshing(false))
   }
 
   return (
@@ -519,8 +641,9 @@ function GameModal({ game: g, onClose, onChange, onDelete }: { game: Game; onClo
 
           <div className="row" style={{ justifyContent: 'space-between', marginTop: 18, flexWrap: 'wrap', gap: 8 }}>
             <div className="row" style={{ gap: 8 }}>
-              {g.rawgId && <button className="btn sm ghost" onClick={refresh}><RefreshCw size={13} className={refreshing ? 'spin' : ''} /> Actualizar datos</button>}
+              {(g.rawgId || g.steamId) && <button className="btn sm ghost" onClick={refresh}><RefreshCw size={13} className={refreshing ? 'spin' : ''} /> Actualizar datos</button>}
               {g.slug && <a className="btn sm ghost" href={`https://rawg.io/games/${g.slug}`} target="_blank" rel="noreferrer"><ExternalLink size={13} /> RAWG</a>}
+              {g.steamId && <a className="btn sm ghost" href={`https://store.steampowered.com/app/${g.steamId}`} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Steam</a>}
             </div>
             <button className="btn sm ghost danger" onClick={() => confirm(`¿Quitar ${g.name} de tu lista?`) && onDelete(g.id)}><Trash2 size={13} /> Quitar</button>
           </div>
