@@ -43,6 +43,10 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
   const { positions, totals, updatedAt, setHoldings } = usePortfolio()
   const [editing, setEditing] = useState<Holding | 'new' | null>(null)
   const invest = accounts.filter((a) => a.kind === 'invest')
+  // Fines de semana y festivos: el cambio es el de la última sesión
+  const lastTrade = Math.max(0, ...positions.map((p) => p.quote?.time ?? 0))
+  const dayLabel = !lastTrade || new Date(lastTrade).toDateString() === new Date().toDateString()
+    ? 'Hoy' : `El ${new Date(lastTrade).toLocaleDateString('es-ES', { weekday: 'long' })}`
 
   return (
     <Card className="span-12 pf" i={i} accent={C}>
@@ -57,7 +61,7 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
             <div className="pf-value"><Money v={totals.value} /></div>
           </div>
           <div>
-            <div className="muted" style={{ fontSize: 13 }}>Hoy</div>
+            <div className="muted" style={{ fontSize: 13 }}>{dayLabel}</div>
             <div className={`pf-num ${totals.day >= 0 ? 'pos' : 'neg'}`}><Money v={totals.day} sign /> <small>{pct(totals.dayPct)}</small></div>
           </div>
           <div>
@@ -106,7 +110,7 @@ function Row({ p, account, onEdit }: { p: Position; account?: Account; onEdit: (
         <b>{p.holding.name}</b>
         <small>
           {fmt(p.qty)} × <Money v={p.avg} /> de media
-          {q ? <> · {q.symbol} · {q.exchange}</> : p.error ? <> · <span className="neg">{p.error}</span></> : ' · cargando…'}
+          {q ? <> · {q.symbol === p.holding.isin ? '' : `${q.symbol} · `}{q.exchange}</> : p.error ? <> · <span className="neg">{p.error}</span></> : ' · cargando…'}
         </small>
       </span>
       <Spark points={q?.spark ?? []} up={(p.day ?? 0) >= 0} />
@@ -115,7 +119,7 @@ function Row({ p, account, onEdit }: { p: Position; account?: Account; onEdit: (
       </span>
       <span className="pf-figs">
         <b>{p.value != null ? <Money v={p.value} /> : <Money v={p.cost} />}</b>
-        {p.dayPct != null && <small className={p.dayPct >= 0 ? 'pos' : 'neg'}>Hoy {pct(p.dayPct)}</small>}
+        {p.dayPct != null && <small className={p.dayPct >= 0 ? 'pos' : 'neg'}>{p.quote && new Date(p.quote.time).toDateString() !== new Date().toDateString() ? 'Últ. sesión' : 'Hoy'} {pct(p.dayPct)}</small>}
         {p.gain != null && <small className={p.gain >= 0 ? 'pos' : 'neg'}><Money v={p.gain} sign /> ({pct(p.gainPct!)})</small>}
       </span>
     </button>
@@ -195,7 +199,7 @@ function HoldingModal({ holding, accounts, onClose, onSave, onDelete }: {
             </label>
             <label className="field" style={{ flex: '1 1 150px' }}>
               <span>Símbolo (opcional)</span>
-              <input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Automático por ISIN" spellCheck={false} />
+              <input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Automático (Lang & Schwarz)" spellCheck={false} />
             </label>
             <button className="btn sm ghost" onClick={search} disabled={searching || !(name.trim() || isin.trim())}><Search size={13} /> {searching ? 'Buscando…' : 'Buscar cotización'}</button>
           </div>
@@ -238,7 +242,7 @@ function HoldingModal({ holding, accounts, onClose, onSave, onDelete }: {
               <Trash2 size={13} /> Quitar posición
             </button>
           )}
-          <small className="faint">Clave de cotización: {quoteKey(draft) || '—'}. Si el precio no cuadra con Trade Republic, busca y elige otro mercado.</small>
+          <small className="faint">Clave de cotización: {quoteKey(draft) || '—'}. Con el ISIN el precio sale de LS Exchange, el mercado de Trade Republic. Si eliges un símbolo, se usa Yahoo Finance.</small>
         </div>
       </div>
     </div>

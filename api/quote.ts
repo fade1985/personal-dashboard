@@ -1,4 +1,5 @@
-// Cotizaciones para la cartera (Vercel). Usa la API pública de gráficos de Yahoo Finance.
+// Cotizaciones para la cartera (Vercel). Los ISIN se cotizan en LS Exchange (Lang & Schwarz, el mercado
+// de Trade Republic, así el precio coincide con la app); si no está ahí, o con un símbolo, Yahoo Finance.
 //   /api/quote?q=US84615Q1031&q=AAPL  → precio actual en euros de cada ISIN o símbolo
 //   /api/quote?search=spacex          → candidatos (símbolo, mercado) para elegir el bueno
 // Los precios en otras monedas se pasan a euros con el cambio del momento.
@@ -80,10 +81,48 @@ async function inEur(c: Chart): Promise<Quote> {
   }
 }
 
-/** Un ISIN puede cotizar en varios mercados: nos quedamos con el que se haya movido más recientemente,
+// --- Lang & Schwarz: los mismos datos que usan las gráficas de su web ---
+const LS = 'https://www.ls-x.de/_rpc/json'
+const LS_EXCHANGE = 2
+
+/** Las horas de L&S son la hora de Fráncfort escrita como si fuera UTC: las pasamos a UTC de verdad. */
+function fromBerlin(ts: number) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Berlin', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+  }).formatToParts(ts).map((x) => [x.type, Number(x.value)]))
+  const offset = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - Math.floor(ts / 1000) * 1000
+  return ts - offset
+}
+
+async function lsQuote(isin: string): Promise<Quote> {
+  type S = { id: number; displayname: string; isin: string }[]
+  const hit = (await json<S>(`${LS}/.lstc/instrument/search/main?q=${isin}&localeId=1`)).find((x) => x.isin === isin)
+  if (!hit) throw new Error('No está en Lang & Schwarz')
+  type C = { info: { plotlines?: { id: string; value: number }[] }; series: { intraday?: { data: [number, number][] } } }
+  const c = await json<C>(`${LS}/instrument/chart/dataForInstrument?instrumentId=${hit.id}&marketId=${LS_EXCHANGE}&quotetype=mid&series=intraday&type=mini&localeId=1`)
+  const data = c.series.intraday?.data ?? []
+  const last = data.at(-1)
+  if (!last) throw new Error('Lang & Schwarz sin precios')
+  const prev = c.info.plotlines?.find((p) => p.id === 'previousDay')?.value ?? data[0][1]
+  // Un punto cada ~5 minutos basta para la minigráfica
+  const step = Math.max(1, Math.round(data.length / 120))
+  const spark = data.filter((_, i) => i % step === 0).map((d) => d[1])
+  if (spark.at(-1) !== last[1]) spark.push(last[1])
+  return {
+    symbol: isin, name: hit.displayname, exchange: 'LS Exchange', currency: 'EUR',
+    price: last[1], native: last[1], prevClose: prev, time: fromBerlin(last[0]), spark,
+  }
+}
+
+/** Un ISIN va primero a Lang & Schwarz. En Yahoo puede cotizar en varios mercados: nos quedamos con el que se haya movido más recientemente,
  *  prefiriendo uno en euros si van a la par. Un símbolo se consulta tal cual. */
 async function resolve(q: string): Promise<Quote> {
   if (!ISIN.test(q)) return inEur(await chart(q))
+  try {
+    return await lsQuote(q)
+  } catch {
+    // Seguimos con Yahoo
+  }
   const found = (await search(q)).filter((c) => c.type !== 'OPTION')
   if (!found.length) throw new Error('No encontrado: elige el símbolo a mano')
   const eur = EUR_SUFFIX.map((s) => found.find((c) => c.symbol.endsWith(s))).find(Boolean)
