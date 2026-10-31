@@ -550,7 +550,7 @@ button.stat-tile:hover { background: rgba(255,255,255,.08); transform: translate
 .tx-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tx-amount.internal { color: var(--muted); font-weight: 500; }
 
-.modal.single { display: block; width: min(520px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; }
+.modal.single { display: block; width: min(520px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; }
 .modal.single.wide { width: min(940px, 100%); }
 .modal.single h2 { margin: 0 0 18px; }
 .modal-close { position: absolute; top: 18px; right: 18px; z-index: 2; }
@@ -738,8 +738,9 @@ textarea.input { resize: vertical; font-family: inherit; }
 .pf-sum span { display: grid; gap: 2px; }
 .pf-sum small { font-size: 11.5px; color: var(--faint); }
 .pf-sum b { font-variant-numeric: tabular-nums; }
-.modal.single.pfd { width: min(780px, 100%); }
-.pfd-top { display: flex; align-items: center; gap: 14px; padding-right: 40px; }
+.modal.single.pfd { width: min(780px, 100%); padding-top: 30px; }
+.pfd > .modal-close { position: sticky; top: 0; float: right; margin: -4px -6px 0 12px; background: var(--panel-solid); }
+.pfd-top { display: flex; align-items: center; gap: 14px; }
 .pfd-top .pf-logo { flex-shrink: 0; }
 .pfd-top h2 { margin: 0 !important; font-size: 24px; }
 .pfd-top small { font-size: 12.5px; }

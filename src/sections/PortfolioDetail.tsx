@@ -194,7 +194,6 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
         <div className="pfd-price">
           <b>{q ? eur(last) : '—'}</b>
           {view && <span className={change >= 0 ? 'pos' : 'neg'}>{change >= 0 ? '▲' : '▼'} {eur(Math.abs(change))} ({pct(changePct)}) <small>{label}</small></span>}
-          {q && q.currency !== 'EUR' && <small className="faint">{q.native.toLocaleString('es-ES', { style: 'currency', currency: q.currency })} en su mercado</small>}
           {q && (
             <small className="faint">
               {fund

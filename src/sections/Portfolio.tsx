@@ -127,7 +127,7 @@ function Row({ p, account, onOpen }: { p: Position; account?: Account; onOpen: (
       </span>
       <Spark points={q?.spark ?? []} up={q?.daily ? (q.spark.at(-1) ?? 0) >= (q.spark[0] ?? 0) : (p.day ?? 0) >= 0} />
       <span className="pf-price">
-        {q ? <>{eur(q.price)}{q.currency !== 'EUR' && <small>{q.native.toLocaleString('es-ES', { style: 'currency', currency: q.currency })}</small>}</> : '—'}
+        {q ? eur(q.price) : '—'}
       </span>
       <span className="pf-figs">
         <b>{p.value != null ? <Money v={p.value} /> : <Money v={p.cost} />}</b>
