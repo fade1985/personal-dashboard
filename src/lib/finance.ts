@@ -22,6 +22,8 @@ export interface Account {
   kind: AccountKind
   color: string
   emoji: string
+  /** Web de la entidad (santander.es) para mostrar su logo; si falta, se deduce del nombre */
+  domain?: string
   /** Saldo (o valor de la inversión) introducido a mano y cuándo. */
   manual?: { value: number; at: string }
   /** Dinero aportado, para calcular la rentabilidad de las inversiones. */

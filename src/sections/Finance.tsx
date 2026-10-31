@@ -12,6 +12,7 @@ import {
   monthFlow, monthKey, netWorth, norm, spendByCategory, txIds, useAccounts, usePrivacy, useRules, useTxs,
   type Account, type AccountKind, type Cell, type ColumnMapping, type Tx,
 } from '../lib/finance'
+import { AccountIcon, accountDomain } from '../components/AccountIcon'
 import { usePortfolio } from '../lib/portfolio'
 import { PortfolioCard } from './Portfolio'
 
@@ -345,7 +346,7 @@ function AccountCard({ a, i, balance, count, onImport, onEdit }: {
   return (
     <Card className="acct" i={i} accent={a.color} style={{ '--ac': a.color } as CSSProperties}>
       <div className="row" style={{ gap: 12 }}>
-        <div className="acct-logo">{a.emoji}</div>
+        <AccountIcon a={a} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="acct-name">{a.name}</div>
           <div className="faint" style={{ fontSize: 12 }}>{KIND_LABEL[a.kind]}</div>
@@ -405,6 +406,13 @@ function AccountModal({ account, hasHoldings, onClose, onSave, onDelete }: {
           <div className="row">
             <input className="input" style={{ width: 64, textAlign: 'center', fontSize: 20 }} value={a.emoji} onChange={(e) => setA({ ...a, emoji: e.target.value })} />
             <input className="input" style={{ flex: 1 }} placeholder="Nombre" value={a.name} onChange={(e) => setA({ ...a, name: e.target.value })} autoFocus={!account} />
+          </div>
+          <div className="row" style={{ gap: 10 }}>
+            <AccountIcon a={a} />
+            <label className="field" style={{ flex: 1 }}>
+              <span>Web del banco (para el logo)</span>
+              <input className="input" placeholder={accountDomain({ name: a.name }) || 'mibanco.es'} value={a.domain ?? ''} onChange={(e) => setA({ ...a, domain: e.target.value || undefined })} spellCheck={false} />
+            </label>
           </div>
           <div className="seg" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             {KINDS.map((k) => <button key={k} className={a.kind === k ? 'active' : ''} onClick={() => setA({ ...a, kind: k })}>{KIND_LABEL[k]}</button>)}
