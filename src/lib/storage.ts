@@ -6,7 +6,7 @@ const META_KEY = PREFIX + 'sync-meta'
 
 // Lo que no sale de este navegador (ni en la copia ni en la sincronización): sesión de Google,
 // cachés, estado de la propia sincronización y preferencias de la vista (filtros, ubicación actual…)
-const LOCAL_ONLY = /^(google-|amiibo-catalog|games-checked-at|games-notified|sync-|am-|weather-selected$|here$)/
+const LOCAL_ONLY = /^(google-|amiibo-catalog|games-checked-at|games-notified|sync-|am-|quotes$|weather-selected$|here$)/
 
 /** Si la clave (sin prefijo) viaja a la copia de seguridad y a Drive. */
 export const isShared = (key: string) => !LOCAL_ONLY.test(key)

@@ -10,6 +10,7 @@ import { MADRID, wmoIcon, type Forecast } from '../lib/weather'
 import { useAmiiboCollection } from './Amiibos'
 import { Money } from './Finance'
 import { ReleaseAlerts } from './Games'
+import { usePortfolio } from '../lib/portfolio'
 import { monthFlow, monthKey, netWorth, spendByCategory, useAccounts, useTxs } from '../lib/finance'
 
 function useClock() {
@@ -326,7 +327,8 @@ function FinanceCard() {
   const [accounts] = useAccounts()
   const [txs] = useTxs()
   const C = SECTION_COLOR.finance
-  const worth = useMemo(() => netWorth(accounts, txs), [accounts, txs])
+  const { byAccount } = usePortfolio()
+  const worth = useMemo(() => netWorth(accounts, txs, byAccount), [accounts, txs, byAccount])
   // Mes actual, o el último con movimientos si este aún está vacío
   const key = useMemo(() => {
     const now = monthKey(new Date())

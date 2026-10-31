@@ -12,6 +12,8 @@ import {
   monthFlow, monthKey, netWorth, norm, spendByCategory, txIds, useAccounts, usePrivacy, useRules, useTxs,
   type Account, type AccountKind, type Cell, type ColumnMapping, type Tx,
 } from '../lib/finance'
+import { usePortfolio } from '../lib/portfolio'
+import { PortfolioCard } from './Portfolio'
 
 const C = SECTION_COLOR.finance
 const today = () => new Date().toISOString().slice(0, 10)
@@ -55,7 +57,8 @@ export default function Finance() {
     return () => clearTimeout(t)
   }, [toast])
 
-  const worth = useMemo(() => netWorth(accounts, txs), [accounts, txs])
+  const { byAccount, holdings } = usePortfolio()
+  const worth = useMemo(() => netWorth(accounts, txs, byAccount), [accounts, txs, byAccount])
   const flow = useMemo(() => monthFlow(txs, month), [txs, month])
   const prev = useMemo(() => monthFlow(txs, shiftMonth(month, -1)), [txs, month])
   const months = useMemo(() => lastMonths(12, month > monthKey(new Date()) ? month : monthKey(new Date())).map((k) => monthFlow(txs, k)), [txs, month])
@@ -183,6 +186,8 @@ export default function Finance() {
           <CashflowBars data={months} selected={month} onSelect={setMonth} />
         </Card>
 
+        <PortfolioCard accounts={accounts} i={3} />
+
         {/* Cuentas */}
         <div className="span-12">
           <div className="section-title">
@@ -217,7 +222,7 @@ export default function Finance() {
       )}
       {editing && (
         <AccountModal
-          account={editing === 'new' ? null : editing}
+          account={editing === 'new' ? null : editing} hasHoldings={editing !== 'new' && holdings.some((h) => h.accountId === editing.id)}
           onClose={() => setEditing(null)}
           onSave={(a) => {
             setAccounts((l) => (l.some((x) => x.id === a.id) ? l.map((x) => (x.id === a.id ? a : x)) : [...l, a]))
@@ -370,8 +375,8 @@ function AccountCard({ a, i, balance, count, onImport, onEdit }: {
 const KINDS: AccountKind[] = ['bank', 'card', 'wallet', 'invest']
 const COLORS = ['#ec0000', '#0b8fd6', '#2563eb', '#38bdf8', '#9fe870', '#e5e7eb', '#4ade80', '#fbbf24', '#f472b6', '#a78bfa']
 
-function AccountModal({ account, onClose, onSave, onDelete }: {
-  account: Account | null; onClose: () => void; onSave: (a: Account) => void; onDelete: (id: string, onlyTxs: boolean) => void
+function AccountModal({ account, hasHoldings, onClose, onSave, onDelete }: {
+  account: Account | null; hasHoldings?: boolean; onClose: () => void; onSave: (a: Account) => void; onDelete: (id: string, onlyTxs: boolean) => void
 }) {
   const [txs] = useTxs()
   const [a, setA] = useState<Account>(account ?? { id: crypto.randomUUID(), name: '', kind: 'bank', color: COLORS[6], emoji: '🏦' })
@@ -410,10 +415,12 @@ function AccountModal({ account, onClose, onSave, onDelete }: {
             ))}
           </div>
           <label className="field">
-            <span>{a.kind === 'invest' ? 'Valor actual (€)' : a.kind === 'card' ? 'Deuda actual (€, en negativo)' : 'Saldo actual (€)'}</span>
+            <span>{hasHoldings ? 'Efectivo sin invertir (€)' : a.kind === 'invest' ? 'Valor actual (€)' : a.kind === 'card' ? 'Deuda actual (€, en negativo)' : 'Saldo actual (€)'}</span>
             <input className="input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" />
             <small className="faint">
-              {a.kind === 'invest'
+              {hasHoldings
+                ? 'Las posiciones de la cartera se suman solas con su cotización; aquí va solo el efectivo.'
+                : a.kind === 'invest'
                 ? 'Cada vez que lo actualices se guarda un punto para ver la evolución.'
                 : 'Opcional si el archivo del banco trae columna de saldo; los movimientos posteriores se suman solos.'}
             </small>

@@ -11,6 +11,7 @@ import type { CalEvent } from '../lib/google'
 import { useForecast } from '../lib/useWeather'
 import { MADRID, wmoText, type Forecast } from '../lib/weather'
 import { cover, daysUntil, isUpcoming, todayYmd, useGames, type Game } from '../lib/games'
+import { usePortfolio } from '../lib/portfolio'
 import { monthFlow, monthKey, netWorth, spendByCategory, useAccounts, useTxs } from '../lib/finance'
 import { syncNow, useSyncStatus } from '../lib/sync'
 import { useAmiiboCollection } from '../sections/Amiibos'
@@ -290,7 +291,8 @@ function Shelf() {
 function MoneyBlock() {
   const [accounts] = useAccounts()
   const [txs] = useTxs()
-  const worth = useMemo(() => netWorth(accounts, txs), [accounts, txs])
+  const { byAccount } = usePortfolio()
+  const worth = useMemo(() => netWorth(accounts, txs, byAccount), [accounts, txs, byAccount])
   const key = useMemo(() => {
     const now = monthKey(new Date())
     if (!txs.length || txs.some((t) => t.date.startsWith(now))) return now

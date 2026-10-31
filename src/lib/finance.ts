@@ -184,8 +184,14 @@ export function spendByCategory(txs: Tx[], key: string) {
   return [...by.entries()].filter(([, v]) => v > 0.005).map(([id, value]) => ({ cat: CAT[id] ?? CAT.other, value })).sort((a, b) => b.value - a.value)
 }
 
-export function netWorth(accounts: Account[], txs: Tx[]) {
-  const balances = Object.fromEntries(accounts.map((a) => [a.id, accountBalance(a, txs)]))
+/** `extra`: valor de la cartera de cada cuenta (posiciones con cotización), que se suma a su efectivo. */
+export function netWorth(accounts: Account[], txs: Tx[], extra: Record<string, number> = {}) {
+  const balances = Object.fromEntries(accounts.map((a) => {
+    const b = accountBalance(a, txs)
+    const x = extra[a.id]
+    if (x == null) return [a.id, b]
+    return [a.id, { value: (b?.value ?? 0) + x, at: new Date().toISOString().slice(0, 10) }]
+  }))
   let liquid = 0, invest = 0, debt = 0
   for (const a of accounts) {
     const v = balances[a.id]?.value ?? 0

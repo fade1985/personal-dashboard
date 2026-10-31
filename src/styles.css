@@ -702,3 +702,48 @@ textarea.input { resize: vertical; font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Cartera ---------- */
+.pf-head { display: flex; flex-wrap: wrap; gap: 14px 40px; margin: 4px 0 18px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.pf-value { font-family: var(--display); font-size: 34px; font-weight: 700; letter-spacing: -.02em; }
+.pf-num { font-family: var(--display); font-size: 22px; font-weight: 700; margin-top: 6px; white-space: nowrap; }
+.pf-num small { font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 600; opacity: .85; }
+.pf-live { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 var(--green); margin-left: 6px; vertical-align: 1px; animation: pf-pulse 2s infinite; }
+@keyframes pf-pulse { 0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, .6); } 70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
+.pf-list { display: grid; gap: 4px; }
+.pf-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 96px 110px 170px; align-items: center; gap: 14px; width: 100%; padding: 10px 8px; border: 0; border-radius: 14px; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; transition: background .15s; }
+.pf-row:hover { background: rgba(255, 255, 255, .04); }
+.pf-logo { width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; font-weight: 700; font-size: 14px; color: var(--ac); background: color-mix(in srgb, var(--ac) 16%, transparent); border: 1px solid color-mix(in srgb, var(--ac) 35%, transparent); }
+.pf-main { display: grid; gap: 2px; min-width: 0; }
+.pf-main b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-main small { font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-price { display: grid; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.pf-price small, .pf-figs small { font-size: 12px; font-weight: 500; }
+.pf-price small { color: var(--faint); }
+.pf-figs { display: grid; text-align: right; font-variant-numeric: tabular-nums; gap: 1px; }
+.pf-figs b { font-weight: 700; }
+.pf-modal { width: min(620px, 100%); }
+.pf-found { display: grid; gap: 4px; max-height: 210px; overflow-y: auto; padding: 4px; border-radius: 14px; border: 1px solid var(--border); background: rgba(0, 0, 0, .2); }
+.pf-found button { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.pf-found button:hover, .pf-found button.on { background: rgba(34, 211, 238, .12); }
+.pf-found span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.pf-found small { color: var(--faint); white-space: nowrap; }
+.pf-found p { margin: 6px 8px; font-size: 13px; }
+.pf-lots { display: grid; gap: 6px; }
+.pf-lot { display: grid; grid-template-columns: 1.2fr 1.1fr 1fr .7fr 34px; gap: 6px; align-items: center; }
+.pf-lot .input { padding: 8px 10px; min-width: 0; }
+.pf-lot.head span { font-size: 12px; color: var(--faint); }
+.pf-lots > .btn { justify-self: start; }
+.pf-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; padding: 12px 14px; border-radius: 14px; background: rgba(34, 211, 238, .07); border: 1px solid rgba(34, 211, 238, .2); }
+.pf-sum span { display: grid; gap: 2px; }
+.pf-sum small { font-size: 11.5px; color: var(--faint); }
+.pf-sum b { font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+  .pf-head { gap: 12px 28px; }
+  .pf-head > div:first-child, .pf-head > div:last-child { flex-basis: 100%; }
+  .pf-row { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  .pf-row .pf-spark, .pf-row .pf-price { display: none; }
+  .pf-lot { grid-template-columns: 1fr 1fr; }
+  .pf-lot.head { display: none; }
+  .pf-lot .icon-btn { justify-self: end; }
+}
