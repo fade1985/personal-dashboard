@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ArrowUpDown, Bell, LayoutGrid, Layers, List, GalleryVerticalEnd, BellRing, CalendarClock, Download, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, Upload, X } from 'lucide-react'
+import { ArrowUpDown, Bell, LayoutGrid, Layers, List, BellRing, CalendarClock, Download, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, Upload, X } from 'lucide-react'
 import { SECTION_COLOR, go } from '../lib/nav'
 import { usePersistentState } from '../lib/storage'
 import { Card, CardTitle, CountUp } from '../components/ui'
@@ -21,7 +21,7 @@ const SORTS: { id: Sort; label: string }[] = [
   { id: 'metacritic', label: 'Metacritic' },
 ]
 
-type View = 'cards' | 'list' | 'covers'
+type View = 'cards' | 'list'
 type Group = 'none' | 'status' | 'platform' | 'genre' | 'year'
 
 const GROUPS: { id: Group; label: string }[] = [
@@ -82,7 +82,8 @@ export default function Games() {
   const [toast, setToast] = useState<string | null>(null)
   const [sort, setSort] = usePersistentState<Sort>('games-sort', 'auto')
   const [filter, setFilter] = useState('')
-  const [view, setView] = usePersistentState<View>('games-view', 'cards')
+  const [savedView, setView] = usePersistentState<View>('games-view', 'cards')
+  const view: View = savedView === 'list' ? 'list' : 'cards'
   const [group, setGroup] = usePersistentState<Group>('games-group', 'none')
   const [perm, setPerm] = useState(() => (typeof Notification === 'undefined' ? 'denied' : Notification.permission))
 
@@ -256,7 +257,7 @@ export default function Games() {
         </div>
         <div className="games-sort">
           <div className="games-view" role="group" aria-label="Vista">
-            {([['cards', LayoutGrid, 'Tarjetas'], ['covers', GalleryVerticalEnd, 'Portadas'], ['list', List, 'Lista']] as const).map(([id, Icon, label]) => (
+            {([['cards', LayoutGrid, 'Tarjetas'], ['list', List, 'Lista']] as const).map(([id, Icon, label]) => (
               <button key={id} className={view === id ? 'on' : ''} onClick={() => setView(id)} title={label} aria-pressed={view === id}><Icon size={16} /></button>
             ))}
           </div>
@@ -293,10 +294,8 @@ export default function Games() {
                 {gr.items.map((g) => <GameRow key={g.id} g={g} onClick={() => setOpen(g)} />)}
               </div>
             ) : (
-              <div className={`game-grid ${view === 'covers' ? 'covers' : ''}`}>
-                {gr.items.map((g, k) => view === 'covers'
-                  ? <GameTile key={g.id} g={g} i={k} onClick={() => setOpen(g)} />
-                  : <GameCard key={g.id} g={g} i={k} onClick={() => setOpen(g)} />)}
+              <div className="game-grid boxes">
+                {gr.items.map((g, k) => <GameCard key={g.id} g={g} i={k} onClick={() => setOpen(g)} />)}
               </div>
             )}
           </div>
@@ -496,17 +495,16 @@ function GameRow({ g, onClick }: { g: Game; onClick: () => void }) {
   )
 }
 
-/** Vista de portadas: muchas a la vez, solo la imagen y el nombre. */
-function GameTile({ g, i, onClick }: { g: Game; i: number; onClick: () => void }) {
-  const up = isUpcoming(g)
-  const st = STATUS_META[g.status]
-  return (
-    <button className={`game-tile ${g.image ? '' : 'noimg'}`} style={{ '--i': Math.min(i, 30), '--c': up ? RELEASE_COLOR : st.color } as CSSProperties} onClick={onClick} title={g.name}>
-      {g.image ? <img src={cover(g.image)} alt="" loading="lazy" /> : <span className="game-noimg">🎮</span>}
-      <span className="game-tile-name"><i>{up ? '📅' : st.emoji}</i> {g.name}</span>
-    </button>
-  )
+/** Portada vertical: la de la biblioteca de Steam si la hay; si no, la imagen del juego a tamaño completo, recortada. */
+function BoxArt({ g }: { g: Game }) {
+  const tall = g.steamId ? `https://cdn.akamai.steamstatic.com/steam/apps/${g.steamId}/library_600x900.jpg` : null
+  const [src, setSrc] = useState(tall ?? boxImage(g.image))
+  if (!src) return <div className="game-noimg">🎮</div>
+  return <img src={src} alt="" loading="lazy" onError={() => setSrc(src === tall ? boxImage(g.image) : undefined)} />
 }
+
+// En vez del recorte apaisado de RAWG (600x400), la imagen entera a 640 de ancho: el recorte vertical queda mejor
+const boxImage = (url?: string) => url?.replace('/media/games/', '/media/resize/640/-/games/')
 
 function GameCard({ g, i, onClick }: { g: Game; i: number; onClick: () => void }) {
   const up = isUpcoming(g)
@@ -514,7 +512,7 @@ function GameCard({ g, i, onClick }: { g: Game; i: number; onClick: () => void }
   return (
     <button className={`game-card ${up ? 'upcoming' : ''}`} style={{ '--i': Math.min(i, 20), '--c': st.color } as CSSProperties} onClick={onClick}>
       <div className="game-cover">
-        {g.image ? <img src={cover(g.image)} alt="" loading="lazy" /> : <div className="game-noimg">🎮</div>}
+        <BoxArt g={g} />
         {up ? (
           <span className="game-badge release">{g.released && !g.tba ? countdown(g.released) : 'Por anunciar'}</span>
         ) : (
