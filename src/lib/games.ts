@@ -98,9 +98,26 @@ async function rawg<T>(path: string): Promise<T> {
   return res.json()
 }
 
+const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+
+/**
+ * Busca en RAWG. La búsqueda normal ordena por popularidad y los juegos pequeños se quedan fuera
+ * de los 10 primeros ("Another Door" queda debajo de cien "Another…"), así que pedimos también la
+ * coincidencia exacta y ponemos delante los títulos que coinciden con lo escrito.
+ */
 export async function searchGames(q: string): Promise<GameInfo[]> {
-  const r = await rawg<{ results: RawgGame[] }>(`/games?search=${encodeURIComponent(q)}&page_size=10`)
-  return r.results.map(toInfo)
+  const enc = encodeURIComponent(q)
+  const [exact, precise] = await Promise.allSettled([
+    rawg<{ results: RawgGame[] }>(`/games?search=${enc}&search_exact=true&page_size=10`),
+    rawg<{ results: RawgGame[] }>(`/games?search=${enc}&search_precise=true&page_size=20`),
+  ])
+  if (exact.status === 'rejected' && precise.status === 'rejected') throw precise.reason
+  const seen = new Set<number>()
+  const all = [exact, precise].flatMap((r) => (r.status === 'fulfilled' ? r.value.results : []))
+    .filter((g) => !seen.has(g.id) && seen.add(g.id))
+  const n = norm(q)
+  const rank = (g: RawgGame) => { const x = norm(g.name); return x === n ? 0 : x.startsWith(n) ? 1 : x.includes(n) ? 2 : 3 }
+  return all.map((g, i) => ({ g, i, r: rank(g) })).sort((a, b) => a.r - b.r || a.i - b.i).slice(0, 15).map(({ g }) => toInfo(g))
 }
 
 export async function fetchGame(rawgId: number): Promise<GameInfo> {

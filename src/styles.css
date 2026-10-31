@@ -599,6 +599,17 @@ button.stat-tile:hover { background: rgba(255,255,255,.08); transform: translate
 .game-result.manual { border-top: 1px solid var(--border); border-radius: 0 0 12px 12px; margin-top: 4px; padding-top: 12px; color: var(--muted); flex-wrap: wrap; }
 .chip-n { font-size: 11px; opacity: .6; margin-left: 6px; font-weight: 600; }
 .games-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.games-sort { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.games-sort .fin-search { width: 210px; }
+.games-sort .fin-search .input { padding-top: 9px; padding-bottom: 9px; }
+.games-sort-sel { position: relative; display: flex; align-items: center; }
+.games-sort-sel svg { position: absolute; left: 12px; color: var(--faint); pointer-events: none; }
+.games-sort-sel .input { padding: 9px 12px 9px 34px; min-width: 200px; cursor: pointer; }
+@media (max-width: 700px) {
+  .games-sort { margin-left: 0; width: 100%; }
+  .games-sort .fin-search, .games-sort-sel { flex: 1 1 160px; width: auto; }
+  .games-sort-sel .input { min-width: 0; width: 100%; }
+}
 
 .release-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .release-row { display: flex; align-items: center; gap: 12px; padding: 7px; border: 0; background: none; border-radius: 12px; text-align: left; transition: background .15s; width: 100%; }

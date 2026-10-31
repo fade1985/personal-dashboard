@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Bell, BellRing, CalendarClock, Download, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, Upload, X } from 'lucide-react'
+import { ArrowUpDown, Bell, BellRing, CalendarClock, Download, ExternalLink, Joystick, Plus, RefreshCw, Search, Sparkles, Star, Trash2, Trophy, Upload, X } from 'lucide-react'
 import { SECTION_COLOR, go } from '../lib/nav'
+import { usePersistentState } from '../lib/storage'
 import { Card, CardTitle, CountUp } from '../components/ui'
 import {
   RELEASE_COLOR, STATUS_META, cover, daysUntil, fetchGame, isUpcoming, rawgEnabled, searchGames, todayYmd, upcomingReleases, useGames,
@@ -9,6 +10,26 @@ import {
 
 const C = SECTION_COLOR.games
 type Tab = 'upcoming' | GameStatus | 'all'
+type Sort = 'auto' | 'added' | 'name' | 'release' | 'rating' | 'metacritic'
+
+const SORTS: { id: Sort; label: string }[] = [
+  { id: 'auto', label: 'Orden de la lista' },
+  { id: 'added', label: 'Añadidos recientemente' },
+  { id: 'name', label: 'Nombre (A-Z)' },
+  { id: 'release', label: 'Fecha de salida' },
+  { id: 'rating', label: 'Mi nota' },
+  { id: 'metacritic', label: 'Metacritic' },
+]
+
+const byName = (a: Game, b: Game) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base', numeric: true })
+const SORTERS: Record<Exclude<Sort, 'auto'>, (a: Game, b: Game) => number> = {
+  added: (a, b) => b.addedAt.localeCompare(a.addedAt),
+  name: byName,
+  // Más nuevos primero; sin fecha, al final
+  release: (a, b) => (b.released ?? '').localeCompare(a.released ?? '') || byName(a, b),
+  rating: (a, b) => (b.rating ?? 0) - (a.rating ?? 0) || byName(a, b),
+  metacritic: (a, b) => (b.metacritic ?? 0) - (a.metacritic ?? 0) || byName(a, b),
+}
 
 const fmtDate = (d: string, opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' }) =>
   new Date(d + 'T12:00').toLocaleDateString('es-ES', opts)
@@ -48,6 +69,8 @@ export default function Games() {
   const [tab, setTab] = useState<Tab>(() => (games.some((g) => isUpcoming(g) && g.status === 'backlog') ? 'upcoming' : 'backlog'))
   const [open, setOpen] = useState<Game | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [sort, setSort] = usePersistentState<Sort>('games-sort', 'auto')
+  const [filter, setFilter] = useState('')
   const [perm, setPerm] = useState(() => (typeof Notification === 'undefined' ? 'denied' : Notification.permission))
 
   useEffect(() => {
@@ -95,9 +118,12 @@ export default function Games() {
     let l = tab === 'upcoming' ? upcoming : tab === 'all' ? games : games.filter((g) => g.status === tab)
     if (tab === 'backlog') l = l.filter((g) => !isUpcoming(g, today))
     if (tab === 'done') l = [...l].sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''))
+    const f = filter.trim().toLowerCase()
+    if (f) l = l.filter((g) => [g.name, g.myPlatform, ...(g.platforms ?? []), ...(g.genres ?? [])].some((x) => x?.toLowerCase().includes(f)))
+    if (sort !== 'auto') l = [...l].sort(SORTERS[sort])
     return l
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games, tab])
+  }, [games, tab, sort, filter])
 
   const add = (info: GameInfo, status: GameStatus) => {
     setGames((l) => addFromInfo(l, info, status))
@@ -110,14 +136,14 @@ export default function Games() {
 
   // Pasados agrupados por año
   const groups = useMemo(() => {
-    if (tab !== 'done') return [{ key: '', items: list }]
+    if (tab !== 'done' || sort !== 'auto') return [{ key: '', items: list }]
     const by = new Map<string, Game[]>()
     for (const g of list) {
       const k = g.finishedAt?.slice(0, 4) ?? 'Sin fecha'
       by.set(k, [...(by.get(k) ?? []), g])
     }
     return [...by.entries()].map(([key, items]) => ({ key, items }))
-  }, [list, tab])
+  }, [list, tab, sort])
 
   return (
     <>
@@ -201,12 +227,24 @@ export default function Games() {
             </button>
           ))}
         </div>
+        <div className="games-sort">
+          <div className="fin-search">
+            <Search size={15} />
+            <input className="input" type="search" placeholder="Filtrar mi lista…" value={filter} onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setFilter('')} />
+          </div>
+          <label className="games-sort-sel" title="Ordenar">
+            <ArrowUpDown size={15} />
+            <select className="input" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+              {SORTS.map((o) => <option key={o.id} value={o.id}>{o.id === 'auto' ? (tab === 'done' ? 'Por año en que lo pasé' : tab === 'upcoming' ? 'Lo próximo primero' : 'Orden en que los añadí') : o.label}</option>)}
+            </select>
+          </label>
+        </div>
       </div>
 
       {list.length === 0 ? (
         <div className="empty" style={{ padding: '40px 0' }}>
           <div className="big">{tab === 'done' ? '🏆' : tab === 'upcoming' ? '📅' : '🎮'}</div>
-          <p>{games.length ? 'Nada en esta lista' : 'Usa el buscador de arriba para añadir tu primer juego'}</p>
+          <p>{filter.trim() ? `Nada coincide con «${filter.trim()}» en esta lista` : games.length ? 'Nada en esta lista' : 'Usa el buscador de arriba para añadir tu primer juego'}</p>
         </div>
       ) : (
         groups.map((gr) => (
