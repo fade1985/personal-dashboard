@@ -8,6 +8,18 @@ const fmt = (v: number, max = 6) => v.toLocaleString('es-ES', { maximumFractionD
 const pct = (v: number) => `${v > 0 ? '+' : ''}${(v * 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`
 const DAY = 864e5
 
+/** Logo de la empresa o el fondo, del mismo sitio que usa la app de Trade Republic; si no hay, las iniciales. */
+export function Logo({ isin, name }: { isin: string; name: string }) {
+  const [failed, setFailed] = useState<string | null>(null)
+  const initials = name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+  const ok = /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin) && failed !== isin
+  return (
+    <span className={`pf-logo ${ok ? 'img' : ''}`}>
+      {ok ? <img src={`https://assets.traderepublic.com/img/logos/${isin}/dark.svg`} alt="" loading="lazy" onError={() => setFailed(isin)} /> : initials}
+    </span>
+  )
+}
+
 const RANGES = [
   { id: '1D', days: 0 },
   { id: '1S', days: 7 },
@@ -174,7 +186,6 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
   const lots = [...p.holding.lots].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
   const buys = lots.filter((l) => l.date).map((l) => ({ t: new Date(`${l.date}T12:00:00`).getTime(), price: l.price }))
   const label = { '1D': 'en la sesión', '1S': 'en una semana', '1M': 'en un mes', '6M': 'en 6 meses', '1A': 'en un año', '5A': 'en 5 años', Máx: 'desde el inicio' }[r]
-  const initials = p.holding.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
     <div className="modal-back" onClick={onClose}>
@@ -182,7 +193,7 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
         <button className="icon-btn modal-close" onClick={onClose} aria-label="Cerrar"><X size={18} /></button>
 
         <div className="pfd-top">
-          <span className="pf-logo">{initials}</span>
+          <Logo isin={p.holding.isin} name={p.holding.name} />
           <div>
             <h2>{p.holding.name}</h2>
             <small className="faint">

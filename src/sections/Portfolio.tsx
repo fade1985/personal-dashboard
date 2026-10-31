@@ -5,7 +5,7 @@ import { Card, CardTitle } from '../components/ui'
 import { eur, type Account } from '../lib/finance'
 import { position, quoteKey, searchSymbols, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
 import { Money } from './Finance'
-import { HoldingDetail } from './PortfolioDetail'
+import { HoldingDetail, Logo } from './PortfolioDetail'
 
 const C = '#22d3ee'
 
@@ -114,10 +114,9 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
 
 function Row({ p, account, onOpen }: { p: Position; account?: Account; onOpen: () => void }) {
   const q = p.quote
-  const initials = p.holding.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
   return (
     <button className="pf-row" onClick={onOpen} style={{ '--ac': account?.color ?? C } as CSSProperties}>
-      <span className="pf-logo">{initials}</span>
+      <Logo isin={p.holding.isin} name={p.holding.name} />
       <span className="pf-main">
         <b>{p.holding.name}</b>
         <small>
