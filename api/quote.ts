@@ -141,14 +141,18 @@ async function lsQuote(isin: string): Promise<Quote> {
 
 /** Un ISIN va primero a Lang & Schwarz. En Yahoo puede cotizar en varios mercados: nos quedamos con el que se haya movido más recientemente,
  *  prefiriendo uno en euros si van a la par. Un símbolo se consulta tal cual. */
+/** Yahoo nombra algunos fondos con el ISIN y el mercado (IE00BK5BQT80.SG) y no guarda su histórico: esos van como el ISIN. */
+const isinOf = (q: string) => (ISIN.test(q) ? q : /^([A-Z]{2}[A-Z0-9]{9}\d)\.[A-Z]{1,3}$/.exec(q)?.[1])
+
 async function resolve(q: string): Promise<Quote> {
-  if (!ISIN.test(q)) return inEur(await chart(q))
+  const isin = isinOf(q)
+  if (!isin) return inEur(await chart(q))
   try {
-    return await lsQuote(q)
+    return await lsQuote(isin)
   } catch {
     // Seguimos con Yahoo
   }
-  return inEur(await yahooPick(q))
+  return inEur(isin === q ? await yahooPick(q) : await chart(q))
 }
 
 /** El mercado de Yahoo para un ISIN: el que se haya movido más recientemente, con ventaja para el que cotiza en euros. */
@@ -166,8 +170,9 @@ async function yahooPick(q: string): Promise<Chart> {
 
 /** Histórico para la ficha: el día (de minuto en minuto o cada 5) y un cierre por día desde que cotiza. */
 async function history(q: string): Promise<History> {
-  if (ISIN.test(q)) {
-    const hit = await lsFind(q).catch(() => null)
+  const isin = isinOf(q)
+  if (isin) {
+    const hit = await lsFind(isin).catch(() => null)
     if (hit) {
       const c = await lsChart(hit.id, 'intraday,history')
       const fix = (d: Point[] = []) => d.map(([t, v]): Point => [fromBerlin(t), v])
