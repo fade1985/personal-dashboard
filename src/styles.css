@@ -677,8 +677,19 @@ button.stat-tile:hover { background: rgba(255,255,255,.08); transform: translate
 .star-input button.on { color: #fbbf24; }
 .star-input button.on svg { fill: #fbbf24; }
 
-.discover-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 1fr); gap: 14px; overflow-x: auto; padding-bottom: 6px; }
-.discover-item .game-cover { border-radius: 14px; }
+.games-hero { display: flex; flex-direction: column; min-width: 0; }
+.discover { margin-top: auto; padding-top: 18px; min-width: 0; }
+.discover-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+.discover-head svg { color: #e879f9; }
+.discover-row { display: grid; grid-auto-flow: column; grid-auto-columns: 150px; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
+.discover-item { min-width: 0; }
+.discover-item .game-cover { border-radius: 10px; aspect-ratio: 16 / 9; }
+.discover-item .game-badge { left: 6px; top: 6px; font-size: 10.5px; padding: 3px 7px; }
+.discover-add { position: absolute; right: 6px; bottom: 6px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; border: 1px solid rgba(255,255,255,.2); background: rgba(8,8,16,.7); backdrop-filter: blur(6px); color: #fff; cursor: pointer; font-weight: 700; transition: background .15s; }
+.discover-add:hover { background: #c026d3; }
+.discover-add.on { background: rgba(74, 222, 128, .85); border-color: transparent; color: #04120a; }
+.discover-name { margin-top: 6px; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discover-date { font-size: 11.5px; color: var(--faint); }
 
 .game-modal { padding: 0; }
 .game-modal-cover { min-height: 240px; display: flex; align-items: flex-end; padding: 28px; background-size: cover; background-position: center; position: relative; }

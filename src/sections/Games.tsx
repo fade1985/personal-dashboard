@@ -222,6 +222,7 @@ export default function Games() {
               <div className="l"><CalendarClock size={12} /> por salir</div>
             </button>
           </div>
+          {rawgEnabled && <Discover owned={games} onAdd={add} onOpen={setOpen} />}
         </Card>
 
         <Card className="span-4 releases-card" i={1} accent={RELEASE_COLOR} style={{ height: '100%' }}>
@@ -302,7 +303,6 @@ export default function Games() {
         ))
       )}
 
-      {rawgEnabled && <Discover owned={games} onAdd={add} />}
 
       {open && (
         <GameModal
@@ -535,30 +535,34 @@ function GameCard({ g, i, onClick }: { g: Game; i: number; onClick: () => void }
   )
 }
 
-function Discover({ owned, onAdd }: { owned: Game[]; onAdd: (g: GameInfo, s: GameStatus) => void }) {
+/** Lanzamientos destacados de los próximos meses, en una tira dentro de la tarjeta del buscador. */
+function Discover({ owned, onAdd, onOpen }: { owned: Game[]; onAdd: (g: GameInfo, s: GameStatus) => void; onOpen: (g: Game) => void }) {
   const [items, setItems] = useState<GameInfo[] | null>(null)
   useEffect(() => { upcomingReleases().then(setItems).catch(() => setItems([])) }, [])
   if (!items?.length) return null
-  const has = new Set(owned.map((g) => g.rawgId))
+  const mine = new Map(owned.filter((g) => g.rawgId).map((g) => [g.rawgId, g]))
   return (
-    <Card i={2} accent={RELEASE_COLOR} style={{ marginTop: 24 }}>
-      <CardTitle icon={<Sparkles size={16} />} color={RELEASE_COLOR} title="Lanzamientos destacados de los próximos meses" />
+    <div className="discover">
+      <div className="discover-head"><Sparkles size={14} /> Lanzamientos destacados de los próximos meses</div>
       <div className="discover-row">
-        {items.map((r) => (
-          <div key={r.rawgId} className="discover-item">
-            <div className="game-cover">
-              {r.image ? <img src={cover(r.image)} alt="" loading="lazy" /> : <div className="game-noimg">🎮</div>}
-              <span className="game-badge release">{r.released ? countdown(r.released) : 'Por anunciar'}</span>
+        {items.map((r) => {
+          const have = mine.get(r.rawgId)
+          return (
+            <div key={r.rawgId} className="discover-item" title={r.name}>
+              <div className="game-cover">
+                {r.image ? <img src={cover(r.image)} alt="" loading="lazy" /> : <div className="game-noimg">🎮</div>}
+                <span className="game-badge release">{r.released ? countdown(r.released) : 'Por anunciar'}</span>
+                <button className={`discover-add ${have ? 'on' : ''}`} onClick={() => (have ? onOpen(have) : onAdd(r, 'backlog'))} title={have ? 'Ya lo tienes apuntado' : 'Avisarme cuando salga'}>
+                  {have ? '✓' : <Bell size={14} />}
+                </button>
+              </div>
+              <div className="discover-name">{r.name}</div>
+              <div className="discover-date">{r.released ? fmtDate(r.released) : 'Por anunciar'}</div>
             </div>
-            <div className="game-name" style={{ margin: '8px 0 2px' }}>{r.name}</div>
-            <div className="game-sub">{r.released ? fmtDate(r.released) : 'Por anunciar'}</div>
-            <button className="btn sm" style={{ marginTop: 8, width: '100%', justifyContent: 'center' }} disabled={has.has(r.rawgId)} onClick={() => onAdd(r, 'backlog')}>
-              {has.has(r.rawgId) ? '✓ Apuntado' : '🔔 Avisarme'}
-            </button>
-          </div>
-        ))}
+          )
+        })}
       </div>
-    </Card>
+    </div>
   )
 }
 
