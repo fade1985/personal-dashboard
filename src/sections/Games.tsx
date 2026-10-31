@@ -343,6 +343,7 @@ function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => v
   const [q, setQ] = useState('')
   const [results, setResults] = useState<GameInfo[]>([])
   const [steam, setSteam] = useState<SteamHit[]>([])
+  const [steamError, setSteamError] = useState<string | null>(null)
   const [adding, setAdding] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -364,6 +365,7 @@ function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => v
         if (!alive) return
         setResults(r.status === 'fulfilled' ? r.value : [])
         setSteam(st.status === 'fulfilled' ? st.value : [])
+        setSteamError(st.status === 'rejected' ? (st.reason as Error).message : null)
         if (r.status === 'rejected' && st.status === 'rejected') setError((r.reason as Error).message)
       }).finally(() => alive && setLoading(false))
     }, 350)
@@ -456,6 +458,7 @@ function GameSearch({ onAdd, owned }: { onAdd: (g: GameInfo, s: GameStatus) => v
             )
           })}
           {!loading && !results.length && !steamOnly.length && !error && <div className="faint" style={{ padding: '12px 14px', fontSize: 13 }}>Sin resultados en RAWG ni en Steam</div>}
+          {!loading && steamError && <div className="faint" style={{ padding: '6px 14px', fontSize: 12 }}>No se pudo buscar en Steam ({steamError})</div>}
           <div className="game-result manual">
             <Plus size={16} />
             <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>Añadir «{q.trim()}» a mano</div>

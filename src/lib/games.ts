@@ -132,8 +132,9 @@ export interface SteamHit { steamId: number; name: string; image: string }
 
 export async function searchSteam(q: string): Promise<SteamHit[]> {
   const r = await fetch(`/api/steam?search=${encodeURIComponent(q)}`)
-  if (!r.ok) throw new Error(`Steam ${r.status}`)
-  return r.json()
+  const j = await r.json().catch(() => null)
+  if (!r.ok || !Array.isArray(j)) throw new Error(j?.error ?? `error ${r.status}`)
+  return j
 }
 
 export async function fetchSteam(id: number): Promise<GameInfo> {
