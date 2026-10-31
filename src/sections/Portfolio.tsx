@@ -227,7 +227,7 @@ function HoldingModal({ holding, accounts, onClose, onSave, onDelete }: {
             <div className="pf-sum">
               <span><small>Participaciones</small><b>{fmt(sum.qty)}</b></span>
               <span><small>Precio medio</small><b>{eur(sum.avg, 4)}</b></span>
-              <span><small>Con comisiones</small><b>{eur(sum.cost / sum.qty, 4)}</b></span>
+              <span><small>Sin comisiones</small><b>{eur(sum.avgGross, 4)}</b></span>
               <span><small>Invertido</small><b>{eur(sum.cost)}</b></span>
             </div>
           )}

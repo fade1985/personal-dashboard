@@ -93,8 +93,10 @@ export interface Position {
   quote?: Quote
   error?: string
   qty: number
-  /** Precio medio sin comisiones */
+  /** Precio medio con comisiones (como lo muestra Trade Republic) */
   avg: number
+  /** Precio medio sin comisiones */
+  avgGross: number
   fees: number
   /** Lo que te costó, comisiones incluidas */
   cost: number
@@ -114,7 +116,7 @@ export function position(h: Holding, q?: QuoteResult): Position {
   const value = quote ? qty * quote.price : null
   const day = quote ? qty * (quote.price - quote.prevClose) : null
   return {
-    holding: h, quote, error: q && !isQuote(q) ? q.error : undefined, qty, avg: qty ? gross / qty : 0, fees, cost, value, day,
+    holding: h, quote, error: q && !isQuote(q) ? q.error : undefined, qty, avg: qty ? cost / qty : 0, avgGross: qty ? gross / qty : 0, fees, cost, value, day,
     dayPct: quote && quote.prevClose ? quote.price / quote.prevClose - 1 : null,
     gain: value != null ? value - cost : null,
     gainPct: value != null && cost ? (value - cost) / cost : null,
