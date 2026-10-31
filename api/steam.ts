@@ -32,9 +32,9 @@ async function json<T>(url: string): Promise<T> {
 }
 
 async function search(term: string) {
-  type R = { items?: { type: string; id: number; name: string }[] }
+  type R = { items?: { type: string; id: number; name: string; tiny_image?: string }[] }
   const r = await json<R>(`${STORE}/storesearch/?term=${encodeURIComponent(term)}&l=english&cc=ES`)
-  return (r.items ?? []).filter((x) => x.type === 'app').slice(0, 8).map((x) => ({ steamId: x.id, name: x.name, image: header(x.id) }))
+  return (r.items ?? []).filter((x) => x.type === 'app').slice(0, 8).map((x) => ({ steamId: x.id, name: x.name, image: x.tiny_image ?? header(x.id) }))
 }
 
 async function app(id: number) {
