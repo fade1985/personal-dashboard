@@ -501,7 +501,7 @@ function GameTile({ g, i, onClick }: { g: Game; i: number; onClick: () => void }
   const up = isUpcoming(g)
   const st = STATUS_META[g.status]
   return (
-    <button className="game-tile" style={{ '--i': Math.min(i, 30), '--c': up ? RELEASE_COLOR : st.color } as CSSProperties} onClick={onClick} title={g.name}>
+    <button className={`game-tile ${g.image ? '' : 'noimg'}`} style={{ '--i': Math.min(i, 30), '--c': up ? RELEASE_COLOR : st.color } as CSSProperties} onClick={onClick} title={g.name}>
       {g.image ? <img src={cover(g.image)} alt="" loading="lazy" /> : <span className="game-noimg">🎮</span>}
       <span className="game-tile-name"><i>{up ? '📅' : st.emoji}</i> {g.name}</span>
     </button>
