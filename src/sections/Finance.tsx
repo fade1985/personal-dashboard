@@ -12,7 +12,7 @@ import {
   monthFlow, monthKey, netWorth, norm, spendByCategory, txIds, useAccounts, usePrivacy, useRules, useTxs,
   type Account, type AccountKind, type Cell, type ColumnMapping, type Tx,
 } from '../lib/finance'
-import { AccountIcon, accountDomain } from '../components/AccountIcon'
+import { AccountIcon, accountDomain, shrinkLogo } from '../components/AccountIcon'
 import { usePortfolio } from '../lib/portfolio'
 import { PortfolioCard } from './Portfolio'
 
@@ -407,12 +407,24 @@ function AccountModal({ account, hasHoldings, onClose, onSave, onDelete }: {
             <input className="input" style={{ width: 64, textAlign: 'center', fontSize: 20 }} value={a.emoji} onChange={(e) => setA({ ...a, emoji: e.target.value })} />
             <input className="input" style={{ flex: 1 }} placeholder="Nombre" value={a.name} onChange={(e) => setA({ ...a, name: e.target.value })} autoFocus={!account} />
           </div>
-          <div className="row" style={{ gap: 10 }}>
+          <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <AccountIcon a={a} />
-            <label className="field" style={{ flex: 1 }}>
+            <label className="field" style={{ flex: '1 1 160px' }}>
               <span>Web del banco (para el logo)</span>
-              <input className="input" placeholder={accountDomain({ name: a.name }) || 'mibanco.es'} value={a.domain ?? ''} onChange={(e) => setA({ ...a, domain: e.target.value || undefined })} spellCheck={false} />
+              <input className="input" placeholder={accountDomain({ name: a.name }) || 'mibanco.es'} value={a.domain ?? ''} onChange={(e) => setA({ ...a, domain: e.target.value || undefined, logo: undefined })} spellCheck={false} disabled={!!a.logo} />
             </label>
+            {a.logo ? (
+              <button className="btn sm ghost" onClick={() => setA({ ...a, logo: undefined })}><X size={13} /> Quitar logo</button>
+            ) : (
+              <label className="btn sm ghost" style={{ cursor: 'pointer' }}>
+                <Upload size={13} /> Subir logo
+                <input type="file" accept="image/*" hidden onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) shrinkLogo(f).then((logo) => setA((x) => ({ ...x, logo })), (err) => alert(err.message))
+                  e.target.value = ''
+                }} />
+              </label>
+            )}
           </div>
           <div className="seg" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             {KINDS.map((k) => <button key={k} className={a.kind === k ? 'active' : ''} onClick={() => setA({ ...a, kind: k })}>{KIND_LABEL[k]}</button>)}

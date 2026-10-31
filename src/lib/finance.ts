@@ -24,6 +24,8 @@ export interface Account {
   emoji: string
   /** Web de la entidad (santander.es) para mostrar su logo; si falta, se deduce del nombre */
   domain?: string
+  /** Logo subido por ti (PNG de 96 px en data URL); manda sobre el de la web */
+  logo?: string
   /** Saldo (o valor de la inversión) introducido a mano y cuándo. */
   manual?: { value: number; at: string }
   /** Dinero aportado, para calcular la rentabilidad de las inversiones. */

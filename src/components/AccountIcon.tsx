@@ -3,7 +3,7 @@ import type { Account } from '../lib/finance'
 
 /** Web de cada entidad conocida, para sacar su icono. */
 const KNOWN: [RegExp, string][] = [
-  [/santander/i, 'santander.es'],
+  [/santander/i, 'bancosantander.es'],
   [/caixa/i, 'caixabank.es'],
   [/carrefour/i, 'carrefour.es'],
   [/paypal/i, 'paypal.com'],
@@ -36,6 +36,7 @@ export function AccountIcon({ a, className = 'acct-logo' }: { a: Account; classN
   const domain = accountDomain(a)
   const [failed, setFailed] = useState<string | null>(null)
   const ok = domain && failed !== domain
+  if (a.logo) return <div className={`${className} img own`}><img src={a.logo} alt="" /></div>
   return (
     <div className={`${className} ${ok ? 'img' : ''}`}>
       {ok ? (
@@ -45,4 +46,25 @@ export function AccountIcon({ a, className = 'acct-logo' }: { a: Account; classN
       ) : a.emoji}
     </div>
   )
+}
+
+/** Reduce una imagen subida a un PNG cuadrado de 96 px (cabe de sobra en la sincronización). */
+export function shrinkLogo(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const size = 96
+      const c = document.createElement('canvas')
+      c.width = c.height = size
+      const ctx = c.getContext('2d')!
+      const k = Math.min(size / img.width, size / img.height)
+      const w = img.width * k, h = img.height * k
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h)
+      URL.revokeObjectURL(url)
+      resolve(c.toDataURL('image/png'))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No es una imagen')) }
+    img.src = url
+  })
 }
