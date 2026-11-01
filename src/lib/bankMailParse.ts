@@ -40,3 +40,36 @@ export function parseCaixa(text: string): { moves: MailMove[]; balances: MailBal
   return { moves, balances }
 }
 
+
+// ---------- PayPal (servicio@paypal.es) ----------
+
+export interface PayPalMove { kind: 'payment' | 'refund'; merchant: string; amount: number; /** pagado con el saldo de PayPal (no con tarjeta o banco) */ balance: boolean }
+
+const EUR = String.raw`([\d.]+,\d{2})\s*€?\s*EUR`
+
+/**
+ * Asunto y texto de un correo de PayPal → pago o reembolso. Lo que no sea eso (envíos de dinero,
+ * avisos de seguridad, publicidad) devuelve null.
+ *   "Recibo de su pago a Cabify.com"                 / "Ha pagado 13,38 € EUR a Cabify.com"
+ *   "ENEBA: 25,99 € EUR"                             / "Has autorizado un pago de 25,99 € EUR a ENEBA"
+ *   "Su reembolso de Microsoft Payments está en camino" / "Hemos iniciado tu reembolso por 12,99 € EUR de Microsoft Payments"
+ */
+export function parsePayPal(subject: string, text: string): PayPalMove | null {
+  const t = text.replace(/\s+/g, ' ')
+  const s = subject.replace(/\s+/g, ' ').trim()
+  const amount = (re: RegExp) => { const m = re.exec(t); return m ? num(m[1]) : null }
+  const balance = /saldo de paypal|paypal balance/i.test(t) && !/(visa|mastercard|tarjeta|cuenta bancaria|banco)\b.{0,40}\d{4}/i.test(t)
+
+  let m = /reembolso de (.+?) est[aá] en camino/i.exec(s)
+  if (m || /reembolso por/i.test(t)) {
+    const v = amount(new RegExp(String.raw`reembolso (?:por|de) ${EUR}`, 'i'))
+    const merchant = m?.[1] ?? new RegExp(String.raw`reembolso por ${EUR} de (.+?)(?:\.| Los| El| Si| Puede|$)`, 'i').exec(t)?.[2]
+    return v != null && merchant ? { kind: 'refund', merchant: merchant.trim(), amount: v, balance } : null
+  }
+
+  const v = amount(new RegExp(String.raw`(?:ha(?:s)? pagado|autorizado un pago de)\s+${EUR}`, 'i'))
+  if (v == null) return null
+  m = /recibo de (?:su|tu) pago a (.+)$/i.exec(s) ?? /^(.+?):\s*[\d.]+,\d{2}\s*€/.exec(s)
+  const merchant = m?.[1] ?? new RegExp(String.raw`(?:pagado|pago de)\s+${EUR}\s+a\s+(.+?)(?:\.| Detalles| Fecha| Id| N\.| Hola|$)`, 'i').exec(t)?.[2]
+  return merchant ? { kind: 'payment', merchant: merchant.trim(), amount: v, balance } : null
+}

@@ -2,17 +2,23 @@
 //   "Movimientos de tarjetas":            compras con la tarjeta (MyCard, de crédito: se pagan de golpe a fin de mes)
 //   "Todos los movimientos de la cuenta": cargos y abonos en la cuenta (el cargo de MYCARD es el pago de la tarjeta)
 //   "Saldo a una fecha concreta":         saldo disponible de la cuenta ese día
+// Avisos de PayPal (servicio@paypal.es): pagos y reembolsos, con el comercio de verdad. Van al monedero
+// PayPal; si se pagaron con tarjeta o banco, un traspaso los compensa (el cargo "PAYPAL *…" del banco
+// ya cuenta como traspaso por las reglas), así el gasto se cuenta una vez y con su categoría.
 // Se leen de tu Gmail desde el navegador, con el mismo permiso de lectura que la tarjeta de Correo.
 
 import { useEffect } from 'react'
 import { gapi } from './google'
 import { readStore, saveStore } from './storage'
-import { DEFAULT_ACCOUNTS, categorize, type Account, type Rule, type Tx } from './finance'
-import { parseCaixa } from './bankMailParse'
+import { DEFAULT_ACCOUNTS, categorize, norm, type Account, type Rule, type Tx } from './finance'
+import { parseCaixa, parsePayPal } from './bankMailParse'
 
-export { parseCaixa }
+export { parseCaixa, parsePayPal }
 
-const FROM = 'alerta@caixabank.com'
+const CAIXA = 'alerta@caixabank.com'
+const PAYPAL = 'servicio@paypal.es'
+const SENDERS = [CAIXA, PAYPAL]
+const INIT_KEY = 'bankmail-init'
 const SEEN_KEY = 'bankmail-seen'
 export const STATUS_KEY = 'bankmail-status'
 
@@ -48,11 +54,11 @@ function bodyText(p: Part): string {
   return doc.body.textContent ?? ''
 }
 
-async function listIds(days: number) {
+async function listIds(from: string, days: number) {
   const ids: string[] = []
   let page: string | undefined
   do {
-    const q = encodeURIComponent(`from:${FROM} newer_than:${days}d`)
+    const q = encodeURIComponent(`from:${from} newer_than:${days}d`)
     const r = await gapi<{ messages?: { id: string }[]; nextPageToken?: string }>(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${q}${page ? `&pageToken=${page}` : ''}`,
     )
@@ -75,14 +81,18 @@ const cap = (s: string) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpper
  */
 export async function syncBankMail(): Promise<BankMailStatus> {
   const seen = new Set(readStore<string[]>(SEEN_KEY, []))
-  const first = seen.size === 0
-  const ids = (await listIds(first ? 90 : 20)).filter((id) => !seen.has(id))
+  // La primera vez que se lee un remitente se miran 90 días; luego basta con lo reciente
+  const init = new Set(readStore<string[]>(INIT_KEY, seen.size ? [CAIXA] : []))
+  const ids = (await Promise.all(SENDERS.map((f) => listIds(f, init.has(f) ? 20 : 90)))).flat().filter((id) => !seen.has(id))
 
-  const mails: { id: string; at: number; text: string }[] = []
+  const mails: { id: string; at: number; text: string; subject: string; from: string }[] = []
   for (let i = 0; i < ids.length; i += 10) {
     const chunk = await Promise.all(ids.slice(i, i + 10).map((id) =>
       gapi<{ id: string; internalDate: string; payload: Part }>(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`)
-        .then((m) => ({ id: m.id, at: Number(m.internalDate), text: bodyText(m.payload) }))))
+        .then((m) => {
+          const h = (n: string) => m.payload.headers?.find((x) => x.name.toLowerCase() === n)?.value ?? ''
+          return { id: m.id, at: Number(m.internalDate), text: bodyText(m.payload), subject: h('subject'), from: h('from').toLowerCase() }
+        })))
     mails.push(...chunk)
   }
   mails.sort((a, b) => a.at - b.at)
@@ -121,7 +131,38 @@ export async function syncBankMail(): Promise<BankMailStatus> {
     added++
   }
 
+  const ensurePayPal = () => {
+    let a = accounts.find((x) => x.id === 'paypal') ?? accounts.find((x) => /paypal/i.test(x.name))
+    if (!a) {
+      a = { id: 'paypal', name: 'PayPal', kind: 'wallet', color: '#38bdf8', emoji: '🅿️', domain: 'paypal.com' }
+      accounts = [...accounts, a]
+    }
+    return a
+  }
+  const ymdOf = (at: number) => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+
   for (const m of mails) {
+    if (m.from.includes(PAYPAL)) {
+      seen.add(m.id)
+      const p = parsePayPal(m.subject, m.text)
+      if (!p) continue
+      const pp = ensurePayPal()
+      const date = ymdOf(m.at)
+      const amount = p.kind === 'payment' ? -p.amount : p.amount
+      const key = norm(p.merchant).trim()
+      // "Has autorizado un pago" y el recibo del mismo pago: solo una vez
+      const near = (t: Tx) => t.accountId === pp.id && t.source === 'mail' && t.amount === amount && norm(t.desc).trim() === key
+        && Math.abs(Date.parse(t.date) - Date.parse(date)) <= 3 * 864e5
+      if (txs.some(near)) continue
+      // Un reembolso resta del gasto con el que se pagó (misma categoría que el último pago a ese comercio)
+      const prev = [...txs].reverse().find((t) => t.accountId === pp.id && t.amount < 0 && norm(t.desc).trim() === key)
+      const category = p.kind === 'refund' ? prev?.category ?? categorize(p.merchant, -1, rules) : categorize(p.merchant, amount, rules)
+      const id = `mail:${m.id}:0`
+      push({ id, accountId: pp.id, date, desc: p.merchant, amount, category, source: 'mail' })
+      if (!p.balance)
+        push({ id: `${id}:fund`, accountId: pp.id, date, desc: p.kind === 'payment' ? 'Cargado a tu tarjeta o banco' : 'Devuelto a tu tarjeta o banco', amount: -amount, category: 'transfer', source: 'mail' })
+      continue
+    }
     const { moves, balances: bals } = parseCaixa(m.text)
     moves.forEach((mv, k) => {
       const id = `mail:${m.id}:${k}`
@@ -149,6 +190,7 @@ export async function syncBankMail(): Promise<BankMailStatus> {
   if (added || fixed !== txs) saveStore('fin-txs', fixed)
   if (added || balances || accounts.length !== readStore<Account[]>('fin-accounts', DEFAULT_ACCOUNTS).length) saveStore('fin-accounts', accounts)
   saveStore(SEEN_KEY, [...seen])
+  saveStore(INIT_KEY, SENDERS)
   const status = { at: Date.now(), added, balances }
   saveStore(STATUS_KEY, status)
   return status

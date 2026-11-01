@@ -826,17 +826,17 @@ function BankMailBar({ onToast }: { onToast: (s: string) => void }) {
     setBusy(true)
     runBankMail()
       .then((s) => onToast(s.error ? `No se pudieron leer los avisos: ${s.error}` : s.added || s.balances
-        ? `✉️ Avisos de la Caixa: ${s.added} movimientos nuevos${s.balances ? ' y saldo actualizado' : ''}`
-        : 'Nada nuevo en los avisos de la Caixa'))
+        ? `✉️ Avisos del banco: ${s.added} movimientos nuevos${s.balances ? ' y saldo actualizado' : ''}`
+        : 'Nada nuevo en los avisos del banco'))
       .finally(() => setBusy(false))
   }
   return (
     <div className={`bankmail ${status.error ? 'err' : ''}`}>
       <span className="bankmail-icon" aria-hidden>✉️</span>
       <div className="bankmail-text">
-        <b>Avisos de CaixaBank por correo</b>
+        <b>Avisos de CaixaBank y PayPal por correo</b>
         <span>
-          {!g.connected ? 'Conecta Google para leer los avisos de alerta@caixabank.com'
+          {!g.connected ? 'Conecta Google para leer los avisos de CaixaBank y PayPal'
             : status.error ? `Error al leerlos: ${status.error}`
             : status.at ? `Leídos ${relTime(new Date(status.at))}${status.added ? `: ${status.added} movimientos nuevos` : ''}. Se vuelven a mirar cada 15 minutos.`
             : 'Aún no se han leído'}
