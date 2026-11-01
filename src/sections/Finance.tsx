@@ -9,7 +9,7 @@ import { SECTION_COLOR } from '../lib/nav'
 import { Card, CardTitle, CountUp } from '../components/ui'
 import {
   CAT, CATEGORIES, KIND_LABEL, applyMapping, categorize, eur, findHeaderRow, guessMapping, headersOf, lastMonths, merchantOf,
-  monthFlow, monthKey, netWorth, norm, spendByCategory, txIds, useAccounts, usePrivacy, useRules, useTxs,
+  monthFlow, monthKey, netWorth, norm, recategorizeFallbacks, spendByCategory, txIds, useAccounts, usePrivacy, useRules, useTxs,
   type Account, type AccountKind, type Cell, type ColumnMapping, type Tx,
 } from '../lib/finance'
 import { AccountIcon, accountDomain, shrinkLogo } from '../components/AccountIcon'
@@ -47,6 +47,11 @@ export default function Finance() {
   const [toast, setToast] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pickFor = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    const next = recategorizeFallbacks(txs, rules)
+    if (next) setTxs(next)
+  }, [txs, rules, setTxs])
 
   // Si el mes actual aún no tiene datos, empezamos por el último mes con movimientos
   useEffect(() => {

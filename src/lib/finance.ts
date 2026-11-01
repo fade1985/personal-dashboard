@@ -71,6 +71,7 @@ export const CATEGORIES: Category[] = [
   { id: 'super', label: 'Supermercado', emoji: '🛒', color: '#4ade80' },
   { id: 'food', label: 'Restaurantes', emoji: '🍔', color: '#fb923c' },
   { id: 'transport', label: 'Transporte', emoji: '🚇', color: '#38bdf8' },
+  { id: 'mortgage', label: 'Hipoteca', emoji: '🏡', color: '#e879f9' },
   { id: 'home', label: 'Hogar', emoji: '🏠', color: '#a78bfa' },
   { id: 'bills', label: 'Suministros', emoji: '💡', color: '#facc15' },
   { id: 'subs', label: 'Suscripciones', emoji: '📺', color: '#f472b6' },
@@ -93,6 +94,8 @@ const DEFAULT_RULES: Rule[] = [
   // Primero lo más específico: pagar la tarjeta Carrefour no es ir al súper
   ...['trade republic', 'wise', 'indexa', 'myinvestor', 'degiro'].map((m) => ({ match: m, category: 'invest' })),
   ...['traspaso', 'pago tarjeta', 'liquidacion tarjeta', 'carrefour pass', 'servicios financieros carrefour', 'paypal'].map((m) => ({ match: m, category: 'transfer' })),
+  // CaixaBank pone los recibos del préstamo como «PRES.<número>»
+  ...['pres.', 'hipoteca', 'prestamo hipotecario', 'cuota prestamo'].map((m) => ({ match: m, category: 'mortgage' })),
   ...['mercadona', 'carrefour', 'lidl', 'aldi', 'alcampo', 'eroski', 'supermercado', 'ahorramas', 'hipercor', 'consum', 'bonarea'].map((m) => ({ match: m, category: 'super' })),
   ...[' dia ', 'supermercados dia'].map((m) => ({ match: m, category: 'super' })),
   ...['glovo', 'just eat', 'uber eats', 'restaurante', 'telepizza', 'burger', 'mcdonald', 'kfc', 'starbucks', 'cafeteria', 'taberna', 'vips', 'goiko'].map((m) => ({ match: m, category: 'food' })),
@@ -141,6 +144,19 @@ export function categorize(desc: string, amount: number, rules: Rule[]) {
   const d = norm(desc)
   const hit = [...rules, ...DEFAULT_RULES].find((r) => r.match.trim() && matches(d, r.match))
   return hit ? hit.category : amount >= 0 ? 'income' : 'other'
+}
+
+/** Los que cayeron en «otros» sin regla se recolocan si ahora alguna encaja (p. ej. reglas nuevas de serie). */
+export function recategorizeFallbacks(txs: Tx[], rules: Rule[]): Tx[] | null {
+  let changed = false
+  const out = txs.map((t) => {
+    if (t.manual || (t.category !== 'other' && t.category !== 'income')) return t
+    const c = categorize(t.desc, t.amount, rules)
+    if (c === t.category) return t
+    changed = true
+    return { ...t, category: c }
+  })
+  return changed ? out : null
 }
 
 /** Saldo actual: el manual si es más reciente que el último saldo importado. */
