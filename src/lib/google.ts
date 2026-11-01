@@ -113,9 +113,16 @@ let redirectError: string | null = null
   localStorage.setItem(CONNECTED_KEY, '1')
 })()
 
+/** Avisa a useGoogle de que el token ya no vale, para que la interfaz muestre «Conectar». */
+const EXPIRED_EVENT = 'pd-google-expired'
+const expired = () => window.dispatchEvent(new Event(EXPIRED_EVENT))
+
 async function token(): Promise<string> {
   const t = storedToken()
-  if (!t) throw new Error('Sesión de Google caducada: pulsa Conectar')
+  if (!t) {
+    expired()
+    throw new Error('Sesión de Google caducada: pulsa Conectar')
+  }
   return t
 }
 
@@ -129,6 +136,7 @@ export async function gapi<T>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${await token()}` } })
   if (res.status === 401) {
     localStorage.removeItem(TOKEN_KEY)
+    expired()
     throw new GoogleError('Sesión de Google caducada: pulsa Conectar', 401)
   }
   if (res.status === 403) {
@@ -285,14 +293,29 @@ export function useGoogle() {
     }
   }, [connected])
 
-  // Al abrir el dashboard, si ya se conectó antes y el token caducó, lo renovamos
-  // en silencio (como mucho una vez por minuto, para no entrar en bucle).
+  // Si ya se conectó antes y el token caducó, lo renovamos en silencio: al abrir el dashboard y al volver
+  // a la pestaña (en la tablet se queda abierta horas y los temporizadores se duermen). Como mucho una vez
+  // por minuto, para no entrar en bucle; si Google pide confirmar, queda desconectado con su botón.
   useEffect(() => {
-    if (!googleConfigured || storedToken() || !localStorage.getItem(CONNECTED_KEY)) return
-    const last = Number(sessionStorage.getItem(SILENT_KEY) ?? 0)
-    if (Date.now() - last > 60_000) {
-      sessionStorage.setItem(SILENT_KEY, String(Date.now()))
-      startAuth('none')
+    if (!googleConfigured) return
+    // Al fallar una llamada solo se marca desconectado: recargar la página a mitad de algo sería peor
+    const lost = () => { if (!storedToken()) setConnected(false) }
+    const check = () => {
+      if (document.hidden || storedToken()) return
+      setConnected(false)
+      if (!localStorage.getItem(CONNECTED_KEY)) return
+      const last = Number(sessionStorage.getItem(SILENT_KEY) ?? 0)
+      if (Date.now() - last > 60_000) {
+        sessionStorage.setItem(SILENT_KEY, String(Date.now()))
+        startAuth('none')
+      }
+    }
+    check()
+    window.addEventListener(EXPIRED_EVENT, lost)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      window.removeEventListener(EXPIRED_EVENT, lost)
+      document.removeEventListener('visibilitychange', check)
     }
   }, [])
 

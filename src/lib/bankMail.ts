@@ -239,7 +239,8 @@ export function useBankMailWatcher(connected: boolean) {
     if (!connected) return
     const tick = () => {
       const s = readStore<BankMailStatus>(STATUS_KEY, { at: 0, added: 0, balances: 0 })
-      if (!document.hidden && Date.now() - s.at > 14 * 60_000) runBankMail()
+      // Tras un error (p. ej. sesión caducada y vuelta a conectar) se reintenta enseguida, sin esperar los 15 minutos
+      if (!document.hidden && (s.error || Date.now() - s.at > 14 * 60_000)) runBankMail()
     }
     tick()
     const t = setInterval(tick, 60_000)

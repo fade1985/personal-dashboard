@@ -70,7 +70,8 @@ a { color: inherit; }
 .app { display: grid; grid-template-columns: 252px 1fr; min-height: 100vh; }
 
 .sidebar {
-  position: sticky; top: 0; height: 100vh;
+  /* dvh: en el móvil/tablet, 100vh incluye la barra de direcciones y el pie quedaba fuera de la pantalla */
+  position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; overscroll-behavior: contain;
   padding: 22px 14px;
   display: flex; flex-direction: column; gap: 3px;
   background: linear-gradient(180deg, rgba(14, 16, 32, .85), rgba(8, 9, 20, .85));
@@ -114,6 +115,14 @@ a { color: inherit; }
 .backup-row { display: flex; gap: 4px; margin-top: 8px; }
 .backup-row .btn { flex: 1; justify-content: center; font-size: 12px; color: var(--faint); }
 .sidebar-foot { margin-top: auto; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+/* Pantallas bajas: fuera «Próximamente» y menos aire, para que Google y las copias quepan sin desplazar */
+@media (max-height: 820px) and (min-width: 1101px) {
+  .sidebar { padding-top: 16px; padding-bottom: 14px; }
+  .brand { padding-bottom: 14px; }
+  .nav-label, .nav-item:disabled { display: none; }
+  .nav-item { padding-top: 6px; padding-bottom: 6px; }
+  .sidebar-foot { padding: 12px; }
+}
 .sync-line { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; line-height: 1.4; }
 .sync-line > svg { flex-shrink: 0; }
 .sync-line > span { flex: 1; min-width: 0; }
@@ -482,7 +491,7 @@ button.stat-tile:hover { background: rgba(255,255,255,.08); transform: translate
 
 /* ---------- Finanzas ---------- */
 .money { transition: filter .25s; }
-.money.hidden { filter: blur(7px); user-select: none; }
+.money.hidden { user-select: none; letter-spacing: -.02em; color: var(--muted); }
 .pos { color: var(--green); }
 .neg { color: var(--red); }
 .fin-total { font-family: var(--display); font-size: clamp(40px, 6vw, 64px); font-weight: 700; letter-spacing: -.04em; line-height: 1.05; margin: 4px 0 16px;

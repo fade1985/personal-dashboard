@@ -29,10 +29,17 @@ const shiftMonth = (key: string, n: number) => {
   return monthKey(new Date(y, m - 1 + n, 1))
 }
 
-/** Importe en euros que se difumina con el modo privado. */
+/** En modo privado no se pinta la cifra (difuminada se seguía adivinando): solo puntos. */
+export const MASK = '•••••'
+
+/** Importe en euros que se tapa con el modo privado. */
 export function Money({ v, decimals = 2, sign, className = '', style }: { v: number; decimals?: number; sign?: boolean; className?: string; style?: CSSProperties }) {
   const [hide] = usePrivacy()
-  return <span className={`money ${hide ? 'hidden' : ''} ${className}`} style={style}>{sign && v > 0 ? '+' : ''}{eur(v, decimals)}</span>
+  return (
+    <span className={`money ${hide ? 'hidden' : ''} ${className}`} style={style} aria-label={hide ? 'Importe oculto' : undefined}>
+      {hide ? `${MASK} €` : `${sign && v > 0 ? '+' : ''}${eur(v, decimals)}`}
+    </span>
+  )
 }
 
 export default function Finance() {
@@ -137,7 +144,7 @@ export default function Finance() {
             <div style={{ flex: '1 1 260px' }}>
               <div className="muted" style={{ fontSize: 13 }}>Patrimonio neto</div>
               <div className={`fin-total money ${hide ? 'hidden' : ''}`}>
-                <CountUp value={worth.total} /> <span>€</span>
+                {hide ? MASK : <CountUp value={worth.total} />} <span>€</span>
               </div>
               <div className="fin-split">
                 <SplitBar parts={[
@@ -322,8 +329,8 @@ function CashflowBars({ data, selected, onSelect }: { data: ReturnType<typeof mo
       {data.map((d, k) => (
         <button key={d.key} className={`bar-col ${d.key === selected ? 'on' : ''}`} onClick={() => onSelect(d.key)}>
           <div className="bar-tip">
-            <span style={{ color: 'var(--green)' }}>+{hide ? '•••' : eur(d.income, 0)}</span>
-            <span style={{ color: 'var(--rose)' }}>−{hide ? '•••' : eur(d.expense, 0)}</span>
+            <span style={{ color: 'var(--green)' }}>+{hide ? MASK : eur(d.income, 0)}</span>
+            <span style={{ color: 'var(--rose)' }}>−{hide ? MASK : eur(d.expense, 0)}</span>
           </div>
           <div className="bar-pair" style={{ height: H }}>
             <i style={{ height: `${(d.income / max) * 100}%`, background: `linear-gradient(${C}, ${C}55)`, animationDelay: `${k * 40}ms` }} />
@@ -828,21 +835,23 @@ function BankMailBar({ onToast }: { onToast: (s: string) => void }) {
         : 'Nada nuevo en los avisos del banco'))
       .finally(() => setBusy(false))
   }
+  // Si la última lectura falló por la sesión, el botón tiene que ser el de conectar aunque aún conste conectado
+  const needAuth = !g.connected || /caducada/i.test(status.error ?? '')
   return (
     <div className={`bankmail ${status.error ? 'err' : ''}`}>
       <span className="bankmail-icon" aria-hidden>✉️</span>
       <div className="bankmail-text">
         <b>Avisos de CaixaBank y PayPal por correo</b>
         <span>
-          {!g.connected ? 'Conecta Google para leer los avisos de CaixaBank y PayPal'
+          {needAuth ? 'La sesión de Google ha caducado o no está conectada: conéctala para leer los avisos de CaixaBank y PayPal'
             : status.error ? `Error al leerlos: ${status.error}`
-            : status.at ? `Leídos ${relTime(new Date(status.at))}${status.added ? `: ${status.added} movimientos nuevos` : ''}. Se vuelven a mirar cada 15 minutos.`
+            : status.at ? `Leídos ${relTime(new Date(status.at))}${status.added ? `: ${status.added} movimientos nuevos` : ''}${status.balances ? `${status.added ? ' y' : ':'} saldo de CaixaBank actualizado` : ''}. Se vuelven a mirar cada 15 minutos.`
             : 'Aún no se han leído'}
         </span>
       </div>
-      {g.connected
+      {!needAuth
         ? <button className="btn sm" onClick={read} disabled={busy}>{busy ? 'Leyendo…' : 'Leer ahora'}</button>
-        : <button className="btn sm" onClick={g.connect}>Conectar Google</button>}
+        : <button className="btn sm" onClick={g.connect}>{g.email ? 'Reconectar Google' : 'Conectar Google'}</button>}
     </div>
   )
 }
