@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
-  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Joystick, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings, Download, Upload, Cloud, CloudOff, RefreshCw,
+  CalendarDays, CloudSun, Dumbbell, Gamepad2, Home as HomeIcon, Joystick, Landmark, LogIn, LogOut, Sparkles, Utensils, Brush, Settings, Download, Upload, Cloud, CloudOff, RefreshCw, ChevronUp,
 } from 'lucide-react'
 import { useGoogle } from './lib/google'
 import { exportAll, importAll } from './lib/storage'
@@ -84,11 +84,7 @@ export default function App() {
               <span className="nav-icon">{s.icon}</span> <span className="nav-text">{s.label}</span> <span className="soon">pronto</span>
             </button>
           ))}
-          <div className="sidebar-foot">
-            <GoogleButton />
-            <SyncLine />
-          </div>
-          <BackupButtons />
+          <GoogleBox />
           <SidebarMini />
         </aside>
         <main className="main" key={section}>
@@ -183,44 +179,56 @@ function SyncLine() {
   )
 }
 
-function GoogleButton() {
+/** Caja de Google: cerrada muestra solo el estado; al pasar el ratón (o tocarla) se abre con las opciones. */
+function GoogleBox() {
   const g = useGoogleCtx()
-  const head = (
-    <div className="row" style={{ gap: 8, marginBottom: 10 }}>
-      <GoogleLogo />
-      <span style={{ fontWeight: 600, fontSize: 13 }}>Google</span>
-      <span className="spacer" />
-      <span
-        className={`dot ${g.connected ? 'live' : ''}`}
-        style={{ background: g.connected ? 'var(--green)' : 'var(--faint)' }}
-      />
+  const s = useSyncStatus()
+  const [open, setOpen] = useState(false)
+  const syncIcon = !g.connected ? null
+    : s.kind === 'syncing' ? <RefreshCw size={13} className="spin faint" />
+    : s.kind === 'error' || s.kind === 'off' ? <CloudOff size={13} style={{ color: '#fca5a5' }} />
+    : <Cloud size={13} className="faint" />
+  const summary = !g.configured ? 'Sin configurar' : g.connected ? (g.email ?? 'Conectado') : 'Sin conectar'
+  return (
+    <div className={`sidebar-foot gbox ${open ? 'open' : ''}`} onMouseLeave={() => setOpen(false)}>
+      <button className="gbox-head" onClick={() => setOpen(!open)} aria-expanded={open} title="Google, sincronización y copias">
+        <GoogleLogo />
+        <span className="gbox-title">
+          <b>Google</b>
+          <small>{summary}</small>
+        </span>
+        {syncIcon}
+        <span className={`dot ${g.connected ? 'live' : ''}`} style={{ background: g.connected ? 'var(--green)' : 'var(--faint)' }} />
+        <ChevronUp size={14} className="gbox-chev faint" />
+      </button>
+      <div className="gbox-body">
+        <div>
+          <GoogleActions />
+          <SyncLine />
+          <BackupButtons />
+        </div>
+      </div>
     </div>
   )
+}
+
+function GoogleActions() {
+  const g = useGoogleCtx()
   if (!g.configured)
     return (
-      <>
-        {head}
-        <div className="faint" style={{ fontSize: 12, lineHeight: 1.45 }}>
-          <Settings size={12} style={{ verticalAlign: -2 }} /> Añade <code>VITE_GOOGLE_CLIENT_ID</code> en <code>.env.local</code> para Calendar y Gmail.
-        </div>
-      </>
+      <div className="faint" style={{ fontSize: 12, lineHeight: 1.45, marginTop: 10 }}>
+        <Settings size={12} style={{ verticalAlign: -2 }} /> Añade <code>VITE_GOOGLE_CLIENT_ID</code> en <code>.env.local</code> para Calendar y Gmail.
+      </div>
     )
   if (g.connected)
     return (
-      <>
-        {head}
-        <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 8 }}>
-          {g.email ?? 'Conectado'}
-        </div>
-        <button className="btn sm ghost" style={{ width: '100%', justifyContent: 'center' }} onClick={g.disconnect}>
-          <LogOut size={14} /> Desconectar
-        </button>
-      </>
+      <button className="btn sm ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 2 }} onClick={g.disconnect}>
+        <LogOut size={14} /> Desconectar
+      </button>
     )
   return (
     <>
-      {head}
-      <button className="btn primary sm" style={{ width: '100%', justifyContent: 'center' }} onClick={g.connect}>
+      <button className="btn primary sm" style={{ width: '100%', justifyContent: 'center', marginTop: 2 }} onClick={g.connect}>
         <LogIn size={14} /> Conectar
       </button>
       {g.error && <div className="error" style={{ fontSize: 12, marginTop: 8 }}>{g.error}</div>}
