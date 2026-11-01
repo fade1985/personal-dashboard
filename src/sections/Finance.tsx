@@ -848,6 +848,19 @@ function BankMailBar({ onToast }: { onToast: (s: string) => void }) {
             : status.at ? `Leídos ${relTime(new Date(status.at))}${status.added ? `: ${status.added} movimientos nuevos` : ''}${status.balances ? `${status.added ? ' y' : ':'} saldo de CaixaBank actualizado` : ''}. Se vuelven a mirar cada 15 minutos.`
             : 'Aún no se han leído'}
         </span>
+        {!needAuth && !status.error && status.at > 0 && (
+          <span>
+            {status.lastBalance
+              ? <>Último aviso de saldo: <Money v={status.lastBalance.value} /> en {status.lastBalance.account} (…{status.lastBalance.ending}) a {new Date(status.lastBalance.date + 'T12:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</>
+              : 'No ha llegado ningún aviso de «Saldo a una fecha concreta» en los últimos 90 días'}
+          </span>
+        )}
+        {!!status.unknown?.length && (
+          <details className="bankmail-unknown">
+            <summary>{status.unknown.length} {status.unknown.length === 1 ? 'aviso de CaixaBank sin entender' : 'avisos de CaixaBank sin entender'}: cópiame el texto para añadirlos</summary>
+            {status.unknown.map((u, i) => <p key={i}><b>{u.subject}</b><br />{u.text}</p>)}
+          </details>
+        )}
       </div>
       {!needAuth
         ? <button className="btn sm" onClick={read} disabled={busy}>{busy ? 'Leyendo…' : 'Leer ahora'}</button>

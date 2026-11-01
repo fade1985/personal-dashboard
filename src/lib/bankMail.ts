@@ -22,7 +22,14 @@ const INIT_KEY = 'bankmail-init'
 const SEEN_KEY = 'bankmail-seen'
 export const STATUS_KEY = 'bankmail-status'
 
-export interface BankMailStatus { at: number; added: number; balances: number; error?: string }
+export interface BankMailStatus {
+  at: number; added: number; balances: number; error?: string
+  /** Último aviso de saldo leído, para enseñarlo en la barra */
+  lastBalance?: { value: number; date: string; ending: string; account: string }
+  /** Avisos de CaixaBank que no se entendieron (asunto y comienzo del texto), para poder ajustarlos */
+  unknown?: { subject: string; text: string }[]
+}
+const RESALDO_KEY = 'bankmail-resaldo'
 
 // ---------- Gmail ----------
 
@@ -54,11 +61,11 @@ function bodyText(p: Part): string {
   return doc.body.textContent ?? ''
 }
 
-async function listIds(from: string, days: number) {
+async function listIds(from: string, days: number, extra = '') {
   const ids: string[] = []
   let page: string | undefined
   do {
-    const q = encodeURIComponent(`from:${from} newer_than:${days}d`)
+    const q = encodeURIComponent(`from:${from} newer_than:${days}d${extra}`)
     const r = await gapi<{ messages?: { id: string }[]; nextPageToken?: string }>(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${q}${page ? `&pageToken=${page}` : ''}`,
     )
@@ -81,6 +88,12 @@ const cap = (s: string) => s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpper
  */
 export async function syncBankMail(): Promise<BankMailStatus> {
   const seen = new Set(readStore<string[]>(SEEN_KEY, []))
+  // Una vez: volver a leer los avisos de saldo ya vistos (solo ponen el saldo, no crean movimientos,
+  // así que repetirlos no duplica nada) por si el saldo se perdió en una versión anterior
+  if (!readStore<boolean>(RESALDO_KEY, false)) {
+    for (const id of await listIds(CAIXA, 90, ' subject:saldo')) seen.delete(id)
+    saveStore(RESALDO_KEY, true)
+  }
   // La primera vez que se lee un remitente se miran 90 días; luego basta con lo reciente
   const init = new Set(readStore<string[]>(INIT_KEY, seen.size ? [CAIXA] : []))
   const ids = (await Promise.all(SENDERS.map((f) => listIds(f, init.has(f) ? 20 : 90)))).flat().filter((id) => !seen.has(id))
@@ -102,16 +115,27 @@ export async function syncBankMail(): Promise<BankMailStatus> {
   const rules = readStore<Rule[]>('fin-rules', [])
   const have = new Set(txs.map((t) => t.id))
   let added = 0, balances = 0
+  let lastBalance: BankMailStatus['lastBalance']
+  const unknown: { subject: string; text: string }[] = []
+  // Lo que cambia esta lectura, para aplicarlo al final sobre lo guardado entonces (mientras se leían
+  // los correos puede haber llegado otra versión desde Drive y no hay que pisarla)
+  const newAccounts = new Map<string, Account>()
+  const patched = new Map<string, Partial<Account>>()
+  const newTxs: Tx[] = []
 
+  const patch = (id: string, p: Partial<Account>) => {
+    patched.set(id, { ...patched.get(id), ...p })
+    accounts = accounts.map((x) => (x.id === id ? { ...x, ...p } : x))
+    return accounts.find((x) => x.id === id)!
+  }
   const ensureBank = (ending: string) => {
     let a = findBank(accounts, ending)
     if (!a) {
       a = { id: `caixa-${ending}`, name: 'CaixaBank', kind: 'bank', color: '#0b8fd6', emoji: '⭐', domain: 'caixabank.es', ending }
       accounts = [...accounts, a]
+      newAccounts.set(a.id, a)
     } else if (a.ending !== ending) {
-      const withEnding = { ...a, ending }
-      accounts = accounts.map((x) => (x.id === a!.id ? withEnding : x))
-      a = withEnding
+      a = patch(a.id, { ending })
     }
     return a
   }
@@ -120,6 +144,7 @@ export async function syncBankMail(): Promise<BankMailStatus> {
     if (!a) {
       a = { id: `caixa-card-${ending}`, name: `${cap(card)} CaixaBank`, kind: 'card', color: '#0b8fd6', emoji: '💳', domain: 'caixabank.es', ending }
       accounts = [...accounts, a]
+      newAccounts.set(a.id, a)
     }
     return a
   }
@@ -128,6 +153,7 @@ export async function syncBankMail(): Promise<BankMailStatus> {
     if (have.has(t.id)) return
     have.add(t.id)
     txs = [...txs, t]
+    newTxs.push(t)
     added++
   }
 
@@ -136,6 +162,7 @@ export async function syncBankMail(): Promise<BankMailStatus> {
     if (!a) {
       a = { id: 'paypal', name: 'PayPal', kind: 'wallet', color: '#38bdf8', emoji: '🅿️', domain: 'paypal.com' }
       accounts = [...accounts, a]
+      newAccounts.set(a.id, a)
     }
     return a
   }
@@ -179,19 +206,36 @@ export async function syncBankMail(): Promise<BankMailStatus> {
     for (const b of bals) {
       const bank = ensureBank(b.ending)
       if (!bank.manual || bank.manual.at <= b.date) {
-        accounts = accounts.map((a) => (a.id === bank.id ? { ...a, manual: { value: b.value, at: b.date } } : a))
+        patch(bank.id, { manual: { value: b.value, at: b.date } })
         balances++
       }
+      if (!lastBalance || lastBalance.date <= b.date) lastBalance = { value: b.value, date: b.date, ending: b.ending, account: bank.name }
+    }
+    // Lo que no se entiende no se da por visto: se reintenta con cada mejora de la lectura
+    if (!moves.length && !bals.length) {
+      if (unknown.length < 5) unknown.push({ subject: m.subject, text: m.text.replace(/\s+/g, ' ').trim().slice(0, 400) })
+      continue
     }
     seen.add(m.id)
   }
 
-  const fixed = cardPayments(txs, accounts)
-  if (added || fixed !== txs) saveStore('fin-txs', fixed)
-  if (added || balances || accounts.length !== readStore<Account[]>('fin-accounts', DEFAULT_ACCOUNTS).length) saveStore('fin-accounts', accounts)
+  // Se aplica sobre lo guardado ahora, no sobre lo leído al empezar
+  if (newAccounts.size || patched.size) {
+    const fresh = readStore<Account[]>('fin-accounts', DEFAULT_ACCOUNTS)
+    const merged = fresh.map((a) => (patched.has(a.id) ? { ...a, ...patched.get(a.id) } : a))
+    for (const a of newAccounts.values()) if (!merged.some((x) => x.id === a.id)) merged.push({ ...a, ...patched.get(a.id) })
+    accounts = merged
+    saveStore('fin-accounts', merged)
+  }
+  const freshTxs = readStore<Tx[]>('fin-txs', [])
+  const known = new Set(freshTxs.map((t) => t.id))
+  const withNew = [...freshTxs, ...newTxs.filter((t) => !known.has(t.id))]
+  const fixed = cardPayments(withNew, accounts)
+  if (newTxs.length || fixed !== withNew) saveStore('fin-txs', fixed)
   saveStore(SEEN_KEY, [...seen])
   saveStore(INIT_KEY, SENDERS)
-  const status = { at: Date.now(), added, balances }
+  const prev = readStore<BankMailStatus>(STATUS_KEY, { at: 0, added: 0, balances: 0 })
+  const status: BankMailStatus = { at: Date.now(), added, balances, lastBalance: lastBalance ?? prev.lastBalance, unknown }
   saveStore(STATUS_KEY, status)
   return status
 }

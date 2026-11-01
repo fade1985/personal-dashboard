@@ -34,7 +34,8 @@ export function parseCaixa(text: string): { moves: MailMove[]; balances: MailBal
   }
 
   // El saldo disponible en la cuenta acabada en 603 el día 01-11-26 es de 56.963,10 EUR.
-  for (const m of t.matchAll(new RegExp(String.raw`saldo disponible en la cuenta acabada en (\d+) el d[ií]a ${D} es de ${N} EUR`, 'gi')))
+  // (con algo de holgura por si cambian alguna palabra)
+  for (const m of t.matchAll(new RegExp(String.raw`saldo.{0,60}?acabada en (\d+).{0,40}?${D}.{0,40}?${N}\s*(?:EUR|€)`, 'gi')))
     balances.push({ ending: m[1], date: ymd(m[2]), value: num(m[3]) })
 
   return { moves, balances }
