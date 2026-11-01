@@ -552,6 +552,9 @@ button.stat-tile:hover { background: rgba(255,255,255,.08); transform: translate
 .tx-sub .dot { width: 6px; height: 6px; }
 .tx-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tx-amount.internal { color: var(--muted); font-weight: 500; }
+.tx-edit { flex-shrink: 0; width: 30px; height: 30px; opacity: .35; transition: opacity .15s; }
+.tx-row:hover .tx-edit, .tx-edit:focus-visible { opacity: 1; }
+@media (hover: none) { .tx-edit { opacity: .7; } }
 
 .modal.single { display: block; width: min(520px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); overflow-y: auto; }
 .modal.single.wide { width: min(940px, 100%); }

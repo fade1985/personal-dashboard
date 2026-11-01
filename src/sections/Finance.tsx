@@ -480,7 +480,7 @@ function AccountModal({ account, hasHoldings, onClose, onSave, onDelete }: {
 
 function Movements({ month, accounts, onToast }: { month: string; accounts: Account[]; onToast: (s: string) => void }) {
   const [txs, setTxs] = useTxs()
-  const [rules, setRules] = useRules()
+  const [, setRules] = useRules()
   const [q, setQ] = useState('')
   const [acc, setAcc] = useState<string>('all')
   const [cat, setCat] = useState<string>('all')
@@ -524,20 +524,10 @@ function Movements({ month, accounts, onToast }: { month: string; accounts: Acco
     setPicking(null)
   }
 
-  const reapply = () => {
-    setTxs((l) => l.map((x) => {
-      if (x.manual) return x
-      const c = categorize(x.desc, x.amount, rules)
-      return c === x.category ? x : { ...x, category: c }
-    }))
-    onToast(`🔄 Reglas aplicadas a todos los movimientos`)
-  }
-
   return (
     <Card i={10} accent={C}>
       <CardTitle
         icon={<Wallet size={16} />} color={C} title={<>Movimientos <span className="faint" style={{ fontWeight: 400, fontSize: 13 }}>{list.length}</span></>}
-        right={txs.length > 0 && <button className="btn sm ghost" onClick={reapply} title="Volver a categorizar con las reglas">🔄 Recategorizar</button>}
       />
       {txs.length === 0 ? (
         <div className="empty">
@@ -591,6 +581,9 @@ function Movements({ month, accounts, onToast }: { month: string; accounts: Acco
                           </div>
                         </div>
                         <Money v={t.amount} sign className={`tx-amount ${CAT[t.category]?.internal ? 'internal' : t.amount >= 0 ? 'pos' : ''}`} />
+                        <button className="icon-btn tx-edit" onClick={() => setPicking(t)} title="Cambiar la categoría de este movimiento" aria-label={`Cambiar categoría de ${t.desc}`}>
+                          <Pencil size={15} />
+                        </button>
                       </div>
                     )
                   })}
@@ -612,7 +605,7 @@ function Movements({ month, accounts, onToast }: { month: string; accounts: Acco
 }
 
 function CategoryPicker({ tx, onClose, onPick }: { tx: Tx; onClose: () => void; onPick: (cat: string, rule?: string) => void }) {
-  const [remember, setRemember] = useState(true)
+  const [remember, setRemember] = useState(false)
   const [match, setMatch] = useState(() => merchantOf(tx.desc))
   return (
     <div className="modal-back" onClick={onClose}>
