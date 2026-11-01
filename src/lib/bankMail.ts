@@ -134,15 +134,6 @@ export async function syncBankMail(): Promise<BankMailStatus> {
       // "CARGO de MYCARD": el pago mensual de la tarjeta. No es gasto (las compras ya están en la tarjeta)
       const settles = mv.amount < 0 && (/\bmycard\b/i.test(mv.desc) || cardNames().includes(mv.desc.toLowerCase()))
       push({ id, accountId: bank.id, date: mv.date, desc: mv.desc, amount: mv.amount, category: settles ? 'transfer' : categorize(mv.desc, mv.amount, rules), source: 'mail' })
-      if (settles) {
-        const card = accounts.find((a) => a.kind === 'card' && a.ending && /caixa/i.test(a.name + (a.domain ?? '')))
-        if (card) {
-          // Deja la tarjeta a cero como mucho: las compras anteriores a la primera lectura no las conocemos
-          const owed = -txs.filter((t) => t.accountId === card.id && t.date <= mv.date).reduce((s, t) => s + t.amount, 0)
-          const paid = Math.min(-mv.amount, Math.max(0, Math.round(owed * 100) / 100))
-          if (paid > 0) push({ id: `${id}:card`, accountId: card.id, date: mv.date, desc: 'Pago de la tarjeta', amount: paid, category: 'transfer', source: 'mail' })
-        }
-      }
     })
     for (const b of bals) {
       const bank = ensureBank(b.ending)
@@ -154,12 +145,36 @@ export async function syncBankMail(): Promise<BankMailStatus> {
     seen.add(m.id)
   }
 
-  if (added) saveStore('fin-txs', txs)
+  const fixed = cardPayments(txs, accounts)
+  if (added || fixed !== txs) saveStore('fin-txs', fixed)
   if (added || balances || accounts.length !== readStore<Account[]>('fin-accounts', DEFAULT_ACCOUNTS).length) saveStore('fin-accounts', accounts)
   saveStore(SEEN_KEY, [...seen])
   const status = { at: Date.now(), added, balances }
   saveStore(STATUS_KEY, status)
   return status
+}
+
+/**
+ * Rehace los "Pago de la tarjeta" (abonos en la tarjeta que reflejan el cargo de MYCARD en la cuenta).
+ * El cargo del día 1 paga las compras ANTERIORES a ese día (el ciclo del mes pasado); las del mismo día
+ * ya son del ciclo siguiente. Nunca paga más de lo que se conoce: las compras de antes de empezar a
+ * leer los avisos no están, y sin esto la tarjeta quedaría en positivo.
+ */
+export function cardPayments(txs: Tx[], accounts: Account[]): Tx[] {
+  const card = accounts.find((a) => a.kind === 'card' && a.ending && /caixa/i.test(a.name + (a.domain ?? '')))
+  const rest = txs.filter((t) => !(t.source === 'mail' && t.id.endsWith(':card')))
+  if (!card) return rest.length === txs.length ? txs : rest
+  const settlements = rest
+    .filter((t) => t.source === 'mail' && t.accountId !== card.id && t.category === 'transfer' && t.amount < 0 && /\bmycard\b/i.test(t.desc))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const out = [...rest]
+  for (const s of settlements) {
+    const owed = -out.filter((t) => t.accountId === card.id && t.date < s.date).reduce((sum, t) => sum + t.amount, 0)
+    const paid = Math.min(-s.amount, Math.max(0, Math.round(owed * 100) / 100))
+    if (paid > 0) out.push({ id: `${s.id}:card`, accountId: card.id, date: s.date, desc: 'Pago de la tarjeta', amount: paid, category: 'transfer', source: 'mail' })
+  }
+  const same = out.length === txs.length && out.every((t) => txs.some((x) => x.id === t.id && x.amount === t.amount))
+  return same ? txs : out
 }
 
 let running: Promise<BankMailStatus> | null = null
