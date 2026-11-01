@@ -33,6 +33,8 @@ export interface Account {
   /** Valores anotados a lo largo del tiempo (inversiones). */
   history?: { at: string; value: number }[]
   mapping?: ColumnMapping
+  /** Últimas cifras de la cuenta o la tarjeta ("603", "1870"): así se reconocen en los avisos del banco por correo */
+  ending?: string
 }
 
 export interface Tx {
@@ -45,6 +47,8 @@ export interface Tx {
   balance?: number
   /** Categoría elegida a mano: las reglas no la tocan. */
   manual?: boolean
+  /** Llegó por un aviso del banco por correo (al importar el extracto, el extracto manda). */
+  source?: 'mail'
 }
 
 export interface Rule {
@@ -97,7 +101,7 @@ const DEFAULT_RULES: Rule[] = [
   ...['iberdrola', 'endesa', 'naturgy', 'holaluz', 'totalenergies', 'vodafone', 'movistar', 'orange', ' digi ', 'masmovil', 'pepephone', 'jazztel', 'canal de isabel', 'aguas'].map((m) => ({ match: m, category: 'bills' })),
   ...['amazon', 'aliexpress', 'el corte ingles', 'zara', 'primark', 'decathlon', 'ikea', 'mediamarkt', 'fnac', 'pccomponentes', 'shein', 'game stop', 'game.es'].map((m) => ({ match: m, category: 'shopping' })),
   ...['farmacia', 'clinica', 'dentista', 'sanitas', 'adeslas', 'hospital', 'optica'].map((m) => ({ match: m, category: 'health' })),
-  ...[' cine ', 'yelmo', 'cinesa', 'ticketmaster', 'entradas', 'steam', 'gimnasio', 'basic-fit', 'dreamfit'].map((m) => ({ match: m, category: 'leisure' })),
+  ...[' cine ', 'yelmo', 'cinesa', 'ticketmaster', 'entradas', 'steam', 'gimnasio', 'basic-fit', 'dreamfit', 'fitness'] .map((m) => ({ match: m, category: 'leisure' })),
   ...['ryanair', 'iberia', 'vueling', 'booking', 'airbnb', 'hotel', 'easyjet'].map((m) => ({ match: m, category: 'travel' })),
   ...['comision', 'comisión', 'intereses deudores', 'cuota tarjeta'].map((m) => ({ match: m, category: 'fees' })),
   ...['cajero', 'reintegro', 'disposicion efectivo'].map((m) => ({ match: m, category: 'cash' })),

@@ -5,6 +5,7 @@ import {
 import { useGoogle } from './lib/google'
 import { exportAll, importAll } from './lib/storage'
 import { syncNow, useAutoSync, useSyncStatus } from './lib/sync'
+import { useBankMailWatcher } from './lib/bankMail'
 import { relTime } from './components/ui'
 import { GoogleCtx, SECTION_COLOR, go, useGoogleCtx, type SectionId } from './lib/nav'
 import Home from './sections/Home'
@@ -37,6 +38,7 @@ function currentHash(): SectionId {
 export default function App() {
   const google = useGoogle()
   useAutoSync(google.connected)
+  useBankMailWatcher(google.connected)
   const [section, setSection] = useState<SectionId>(currentHash)
 
   useEffect(() => {

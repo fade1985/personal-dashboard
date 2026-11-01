@@ -859,3 +859,11 @@ textarea.input { resize: vertical; font-family: inherit; }
   .pfd-lot { grid-template-columns: 1fr 1fr 1.3fr; }
   .pfd-lot > span:nth-child(2), .pfd-lot > span:nth-child(3) { display: none; }
 }
+
+/* Avisos del banco por correo */
+.bankmail { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin: -6px 0 18px; border-radius: 16px; background: var(--panel); border: 1px solid var(--border); }
+.bankmail.err { border-color: color-mix(in srgb, var(--red) 50%, transparent); }
+.bankmail-icon { font-size: 20px; }
+.bankmail-text { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 13px; }
+.bankmail-text span { color: var(--muted); }
+.bankmail.err .bankmail-text span { color: var(--red); }

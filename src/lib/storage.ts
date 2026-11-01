@@ -77,6 +77,12 @@ export function writeStore<T>(key: string, value: T) {
   }
 }
 
+/** Como writeStore, pero avisando a los componentes que usan esa clave (y a la sincronización). */
+export function saveStore<T>(key: string, value: T) {
+  writeStore(key, value)
+  window.dispatchEvent(new CustomEvent(LOCAL_EVENT, { detail: { key, raw: JSON.stringify(value) } }))
+}
+
 /** Copia de seguridad de todos los datos del dashboard (para pasarlos de localhost a Vercel, etc.). */
 export function exportAll() {
   const data: Record<string, unknown> = {}

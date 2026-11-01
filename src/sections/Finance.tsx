@@ -15,6 +15,10 @@ import {
 import { AccountIcon, accountDomain, shrinkLogo } from '../components/AccountIcon'
 import { usePortfolio } from '../lib/portfolio'
 import { PortfolioCard } from './Portfolio'
+import { STATUS_KEY, runBankMail, type BankMailStatus } from '../lib/bankMail'
+import { useGoogleCtx } from '../lib/nav'
+import { usePersistentState } from '../lib/storage'
+import { relTime } from '../components/ui'
 
 const C = SECTION_COLOR.finance
 const today = () => new Date().toISOString().slice(0, 10)
@@ -118,6 +122,8 @@ export default function Finance() {
           <button className="btn primary" onClick={() => openPicker()}><Upload size={15} /> Importar movimientos</button>
         </div>
       </div>
+
+      <BankMailBar onToast={setToast} />
 
       <div className="bento">
         {/* Patrimonio */}
@@ -581,6 +587,7 @@ function Movements({ month, accounts, onToast }: { month: string; accounts: Acco
                           <div className="tx-sub">
                             <span style={{ color: c.color }}>{c.label}</span>
                             {a && <> · <i className="dot" style={{ background: a.color }} /> {a.name}</>}
+                            {t.source === 'mail' && <span title="Llegó por un aviso del banco por correo; al importar el extracto se sustituye"> · ✉️ aviso</span>}
                           </div>
                         </div>
                         <Money v={t.amount} sign className={`tx-amount ${CAT[t.category]?.internal ? 'internal' : t.amount >= 0 ? 'pos' : ''}`} />
@@ -712,7 +719,9 @@ function ImportModal({ file, accountId, onClose, onDone }: {
       if (existing.has(ids[k])) return
       add.push({ id: ids[k], accountId: acct, date: r.date, desc: r.desc, amount: r.amount, balance: r.balance, category: categorize(r.desc, r.amount, rules) })
     })
-    setTxs((l) => [...l, ...add])
+    // El extracto manda: fuera los movimientos de esa cuenta y esas fechas que llegaron por los avisos de correo
+    const [from, to] = range ?? ['', '']
+    setTxs((l) => [...l.filter((t) => !(t.source === 'mail' && t.accountId === acct && t.date >= from && t.date <= to)), ...add])
     setAccounts((l) => l.map((a) => (a.id === acct ? { ...a, mapping: map } : a)))
     onDone(add.length, parsed.length - add.length)
   }
@@ -803,6 +812,39 @@ function ImportModal({ file, accountId, onClose, onDone }: {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Avisos del banco por correo: cuándo se leyeron, qué entró y un botón para leer ahora. */
+function BankMailBar({ onToast }: { onToast: (s: string) => void }) {
+  const g = useGoogleCtx()
+  const [status] = usePersistentState<BankMailStatus>(STATUS_KEY, { at: 0, added: 0, balances: 0 })
+  const [busy, setBusy] = useState(false)
+  if (!g.configured) return null
+  const read = () => {
+    setBusy(true)
+    runBankMail()
+      .then((s) => onToast(s.error ? `No se pudieron leer los avisos: ${s.error}` : s.added || s.balances
+        ? `✉️ Avisos de la Caixa: ${s.added} movimientos nuevos${s.balances ? ' y saldo actualizado' : ''}`
+        : 'Nada nuevo en los avisos de la Caixa'))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className={`bankmail ${status.error ? 'err' : ''}`}>
+      <span className="bankmail-icon" aria-hidden>✉️</span>
+      <div className="bankmail-text">
+        <b>Avisos de CaixaBank por correo</b>
+        <span>
+          {!g.connected ? 'Conecta Google para leer los avisos de alerta@caixabank.com'
+            : status.error ? `Error al leerlos: ${status.error}`
+            : status.at ? `Leídos ${relTime(new Date(status.at))}${status.added ? `: ${status.added} movimientos nuevos` : ''}. Se vuelven a mirar cada 15 minutos.`
+            : 'Aún no se han leído'}
+        </span>
+      </div>
+      {g.connected
+        ? <button className="btn sm" onClick={read} disabled={busy}>{busy ? 'Leyendo…' : 'Leer ahora'}</button>
+        : <button className="btn sm" onClick={g.connect}>Conectar Google</button>}
     </div>
   )
 }
