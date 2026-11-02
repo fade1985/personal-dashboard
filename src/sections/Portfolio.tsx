@@ -210,7 +210,7 @@ function HoldingModal({ holding, accounts, onClose, onSave, onDelete }: {
             </label>
             <label className="field" style={{ flex: '1 1 150px' }}>
               <span>Símbolo (opcional)</span>
-              <input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder={isin.trim().toUpperCase().startsWith('US') ? 'Automático (Nasdaq / NYSE)' : 'Automático (Lang & Schwarz)'} spellCheck={false} />
+              <input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Automático (Lang & Schwarz)" spellCheck={false} />
             </label>
             <button className="btn sm ghost" onClick={search} disabled={searching || !(name.trim() || isin.trim())}><Search size={13} /> {searching ? 'Buscando…' : 'Buscar cotización'}</button>
           </div>
@@ -253,7 +253,7 @@ function HoldingModal({ holding, accounts, onClose, onSave, onDelete }: {
               <Trash2 size={13} /> Quitar posición
             </button>
           )}
-          <small className="faint">Clave de cotización: {quoteKey(draft) || '—'}. Con el ISIN el precio sale de LS Exchange, el mercado de Trade Republic. Si eliges un símbolo, se usa Yahoo Finance.</small>
+          <small className="faint">Clave de cotización: {quoteKey(draft) || '—'}. Con el ISIN el precio sale de LS Exchange (precio de compra, como Trade Republic). Si eliges un símbolo, se usa Yahoo Finance, salvo un ticker americano con ISIN US…, que se ignora.</small>
         </div>
       </div>
     </div>

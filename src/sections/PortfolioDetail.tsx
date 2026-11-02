@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Pencil, X } from 'lucide-react'
 import { eur } from '../lib/finance'
-import { useHistory, type Point, type Position } from '../lib/portfolio'
+import { quoteKey, useHistory, type Point, type Position } from '../lib/portfolio'
 import { Money } from './Finance'
 
 const fmt = (v: number, max = 6) => v.toLocaleString('es-ES', { maximumFractionDigits: max })
@@ -149,7 +149,7 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
   p: Position; total: number; accountName?: string; color: string; onEdit: () => void; onClose: () => void
 }) {
   const q = p.quote
-  const key = (p.holding.symbol || p.holding.isin).trim().toUpperCase()
+  const key = quoteKey(p.holding)
   const hist = useHistory(key)
   const hasIntraday = (hist.data?.intraday.length ?? 0) > 1
   const fund = q?.daily || (hist.data && !hasIntraday)

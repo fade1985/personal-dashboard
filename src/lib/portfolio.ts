@@ -49,7 +49,14 @@ export const isQuote = (q: QuoteResult | undefined): q is Quote => !!q && 'price
 export const useHoldings = () => usePersistentState<Holding[]>('fin-holdings', [])
 const useQuoteCache = () => usePersistentState<QuoteCache>('quotes', { at: 0, data: {} })
 
-export const quoteKey = (h: Holding) => (h.symbol || h.isin).trim().toUpperCase()
+/** Clave para pedir la cotización. Con ISIN americano, un ticker de EE. UU. puesto a mano (NVDA, GOOG, BRK-B) se ignora:
+ *  así sale de Lang & Schwarz con el precio de compra, como en Trade Republic (y Nasdaq si no está en L&S). */
+export const quoteKey = (h: Holding) => {
+  const isin = h.isin.trim().toUpperCase()
+  const symbol = (h.symbol ?? '').trim().toUpperCase()
+  if (/^US[A-Z0-9]{9}\d$/.test(isin) && /^[A-Z]{1,5}(-[A-Z])?$/.test(symbol)) return isin
+  return symbol || isin
+}
 
 const REFRESH = 60e3
 let inflight: Promise<void> | null = null
