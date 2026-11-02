@@ -210,7 +210,7 @@ function HoldingModal({ holding, accounts, onClose, onSave, onDelete }: {
             </label>
             <label className="field" style={{ flex: '1 1 150px' }}>
               <span>Símbolo (opcional)</span>
-              <input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Automático (Lang & Schwarz)" spellCheck={false} />
+              <input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder={isin.trim().toUpperCase().startsWith('US') ? 'Automático (Nasdaq / NYSE)' : 'Automático (Lang & Schwarz)'} spellCheck={false} />
             </label>
             <button className="btn sm ghost" onClick={search} disabled={searching || !(name.trim() || isin.trim())}><Search size={13} /> {searching ? 'Buscando…' : 'Buscar cotización'}</button>
           </div>

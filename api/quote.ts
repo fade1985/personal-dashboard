@@ -1,5 +1,6 @@
-// Cotizaciones para la cartera (Vercel). Los ISIN se cotizan en LS Exchange (Lang & Schwarz, el mercado
-// de Trade Republic, así el precio coincide con la app); si no está ahí, o con un símbolo, Yahoo Finance.
+// Cotizaciones para la cartera (Vercel). Las acciones americanas (ISIN US…) se cotizan en su bolsa (Nasdaq o NYSE,
+// con antes y después de la apertura) y se pasan a euros. El resto de ISIN va a LS Exchange (Lang & Schwarz, el
+// mercado de Trade Republic, así el precio coincide con la app); si no está ahí, o con un símbolo, Yahoo Finance.
 //   /api/quote?q=US84615Q1031&q=AAPL  → precio actual en euros de cada ISIN o símbolo
 //   /api/quote?search=spacex          → candidatos (símbolo, mercado) para elegir el bueno
 //   /api/quote?history=US84615Q1031   → precios del día y cierres diarios de siempre, para la ficha
@@ -11,7 +12,7 @@ const ISIN = /^[A-Z]{2}[A-Z0-9]{9}\d$/
 // Mercados en euros, por preferencia (los alemanes son los que más se parecen a Trade Republic)
 const EUR_SUFFIX = ['.DE', '.F', '.MU', '.SG', '.BE', '.DU', '.HM', '.VI', '.PA', '.AS', '.MI', '.MC', '.BR', '.LS']
 
-interface Candidate { symbol: string; name: string; exchange: string; type: string }
+interface Candidate { symbol: string; name: string; exchange: string; exchangeCode: string; type: string }
 
 export interface Quote {
   symbol: string
@@ -44,7 +45,7 @@ async function search(q: string): Promise<Candidate[]> {
   type R = { quotes?: { symbol: string; shortname?: string; longname?: string; exchDisp?: string; exchange?: string; quoteType?: string }[] }
   const r = await json<R>(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=12&newsCount=0&listsCount=0`)
   return (r.quotes ?? []).filter((x) => x.symbol).map((x) => ({
-    symbol: x.symbol, name: x.longname ?? x.shortname ?? x.symbol, exchange: x.exchDisp ?? x.exchange ?? '', type: x.quoteType ?? '',
+    symbol: x.symbol, name: x.longname ?? x.shortname ?? x.symbol, exchange: x.exchDisp ?? x.exchange ?? '', exchangeCode: x.exchange ?? '', type: x.quoteType ?? '',
   }))
 }
 
@@ -52,9 +53,9 @@ interface Chart {
   symbol: string; name: string; exchange: string; currency: string; price: number; prevClose: number; time: number; closes: number[]; times: number[]
 }
 
-async function chart(symbol: string, range = '1d', interval = '5m'): Promise<Chart> {
+async function chart(symbol: string, range = '1d', interval = '5m', prePost = false): Promise<Chart> {
   type R = { chart: { result?: { meta: Record<string, unknown>; timestamp?: number[]; indicators: { quote: { close?: (number | null)[] }[] } }[]; error?: { description?: string } } }
-  const r = await json<R>(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`)
+  const r = await json<R>(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}${prePost ? '&includePrePost=true' : ''}`)
   const res = r.chart.result?.[0]
   if (!res) throw new Error(r.chart.error?.description ?? 'Sin datos')
   const m = res.meta as Record<string, number & string>
@@ -65,6 +66,9 @@ async function chart(symbol: string, range = '1d', interval = '5m'): Promise<Cha
   const keep = raw.map((v, i) => i).filter((i) => raw[i] != null && ts[i] != null)
   let closes = keep.map((i) => raw[i] as number)
   const times = keep.map((i) => ts[i] * 1000)
+  let time = Number(m.regularMarketTime ?? 0) * 1000
+  // Con antes y después de la apertura, el último precio es el del último punto si es más nuevo
+  if (prePost && times.length && times.at(-1)! > time) { price = closes.at(-1)!; time = times.at(-1)! }
   let currency = String(m.currency ?? 'EUR')
   // Bolsa de Londres: cotiza en peniques
   if (currency === 'GBp' || currency === 'GBX') {
@@ -73,7 +77,7 @@ async function chart(symbol: string, range = '1d', interval = '5m'): Promise<Cha
   return {
     symbol: String(m.symbol ?? symbol), name: String(m.longName ?? m.shortName ?? symbol),
     exchange: String(m.fullExchangeName ?? m.exchangeName ?? ''), currency, price, prevClose: prev,
-    time: Number(m.regularMarketTime ?? 0) * 1000, closes, times,
+    time, closes, times,
   }
 }
 
@@ -139,6 +143,38 @@ async function lsQuote(isin: string): Promise<Quote> {
   }
 }
 
+// --- Acciones americanas: su bolsa (Nasdaq, NYSE…) en dólares, pasada a euros ---
+const US_EXCHANGES = new Set(['NMS', 'NGM', 'NCM', 'NAS', 'NYQ', 'NYS', 'ASE', 'PCX', 'BTS', 'NIM'])
+const tickers = new Map<string, Promise<string | null>>()
+
+/** El ticker americano de un ISIN US…: primero el buscador de Yahoo y, si no lo encuentra (le pasa con Alphabet), OpenFIGI. */
+function usTicker(isin: string): Promise<string | null> {
+  if (!tickers.has(isin)) {
+    const p = (async () => {
+      const y = (await search(isin).catch(() => [])).find((c) => US_EXCHANGES.has(c.exchangeCode) && /EQUITY|ETF/.test(c.type))
+      if (y) return y.symbol
+      type F = { data?: { ticker: string; securityType2?: string }[] }[]
+      const r = await fetch('https://api.openfigi.com/v3/mapping', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify([{ idType: 'ID_ISIN', idValue: isin, exchCode: 'US' }]),
+      }).then((x) => (x.ok ? (x.json() as Promise<F>) : null)).catch(() => null)
+      // Yahoo escribe las clases con guion (BRK/B → BRK-B)
+      return r?.[0]?.data?.[0]?.ticker.replace('/', '-') ?? null
+    })()
+    p.then((t) => t ?? tickers.delete(isin), () => tickers.delete(isin))
+    tickers.set(isin, p)
+  }
+  return tickers.get(isin)!
+}
+
+async function usQuote(isin: string): Promise<Quote> {
+  const t = await usTicker(isin)
+  if (!t) throw new Error('Sin ticker americano')
+  const c = await chart(t, '1d', '5m', true)
+  if (c.currency !== 'USD') throw new Error('No cotiza en dólares')
+  return inEur(c)
+}
+
 /** Un ISIN va primero a Lang & Schwarz. En Yahoo puede cotizar en varios mercados: nos quedamos con el que se haya movido más recientemente,
  *  prefiriendo uno en euros si van a la par. Un símbolo se consulta tal cual. */
 /** Yahoo nombra algunos fondos con el ISIN y el mercado (IE00BK5BQT80.SG) y no guarda su histórico: esos van como el ISIN. */
@@ -147,6 +183,13 @@ const isinOf = (q: string) => (ISIN.test(q) ? q : /^([A-Z]{2}[A-Z0-9]{9}\d)\.[A-
 async function resolve(q: string): Promise<Quote> {
   const isin = isinOf(q)
   if (!isin) return inEur(await chart(q))
+  if (isin.startsWith('US')) {
+    try {
+      return await usQuote(isin)
+    } catch {
+      // Seguimos con Lang & Schwarz
+    }
+  }
   try {
     return await lsQuote(isin)
   } catch {
@@ -171,6 +214,15 @@ async function yahooPick(q: string): Promise<Chart> {
 /** Histórico para la ficha: el día (de minuto en minuto o cada 5) y un cierre por día desde que cotiza. */
 async function history(q: string): Promise<History> {
   const isin = isinOf(q)
+  const us = isin?.startsWith('US') ? await usTicker(isin).catch(() => null) : null
+  if (us) {
+    const [day, all] = await Promise.all([chart(us, '1d', '2m', true), chart(us, '10y', '1d')])
+    if (day.currency === 'USD') {
+      const k = await toEur('USD')
+      const pts = (c: Chart) => c.closes.map((v, i): Point => [c.times[i], v * k])
+      return { intraday: pts(day), daily: pts(all) }
+    }
+  }
   if (isin) {
     const hit = await lsFind(isin).catch(() => null)
     if (hit) {
