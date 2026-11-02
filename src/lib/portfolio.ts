@@ -165,15 +165,21 @@ export async function searchSymbols(text: string): Promise<{ symbol: string; nam
 export type Point = [number, number]
 export interface History { intraday: Point[]; daily: Point[] }
 
+const HISTORY_TTL = 60e3
 const histories = new Map<string, { at: number; p: Promise<History> }>()
 
-/** Histórico de una cotización para la ficha (en memoria cinco minutos). */
+/** Histórico de una cotización para la ficha (en memoria un minuto; se vuelve a pedir cada minuto mientras está abierta). */
 export function useHistory(key: string) {
   const [state, setState] = useState<{ key: string; data?: History; error?: string }>({ key })
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => !document.hidden && setTick((n) => n + 1), HISTORY_TTL)
+    return () => clearInterval(id)
+  }, [key])
   useEffect(() => {
     let alive = true
     let hit = histories.get(key)
-    if (!hit || Date.now() - hit.at > 5 * 60e3) {
+    if (!hit || Date.now() - hit.at > HISTORY_TTL - 5e3) {
       hit = {
         at: Date.now(),
         p: fetch(`/api/quote?history=${encodeURIComponent(key)}`).then(async (r) => {
@@ -185,8 +191,9 @@ export function useHistory(key: string) {
       hit.p.catch(() => histories.delete(key))
       histories.set(key, hit)
     }
-    hit.p.then((data) => alive && setState({ key, data }), (e: Error) => alive && setState({ key, error: e.message }))
+    // Si falla una actualización, se queda la gráfica que ya había
+    hit.p.then((data) => alive && setState({ key, data }), (e: Error) => alive && setState((s) => (s.key === key && s.data ? s : { key, error: e.message })))
     return () => { alive = false }
-  }, [key])
+  }, [key, tick])
   return state.key === key ? state : { key }
 }

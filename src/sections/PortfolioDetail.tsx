@@ -167,7 +167,10 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
     if (!d) return null
     if (r === '1D') {
       if (d.intraday.length < 2) return null
-      return { pts: thin(d.intraday), base: q?.prevClose ?? d.intraday[0][1], intraday: true }
+      // Con el precio en directo al final, si es más nuevo que el último punto de la gráfica
+      let pts = d.intraday
+      if (q && q.time > pts.at(-1)![0] && q.time - pts.at(-1)![0] < 12 * 60 * 60e3) pts = [...pts, [q.time, q.price]]
+      return { pts: thin(pts), base: q?.prevClose ?? d.intraday[0][1], intraday: true }
     }
     const days = RANGES.find((x) => x.id === r)!.days
     let pts = d.daily

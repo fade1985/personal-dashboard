@@ -193,7 +193,7 @@ export async function GET(request: Request) {
   try {
     if (hist) {
       if (!/^[A-Z0-9.=^-]{1,20}$/.test(hist)) return Response.json({ error: 'Símbolo no válido' }, { status: 400 })
-      return Response.json(await history(hist), { headers: { 'cache-control': 's-maxage=300, stale-while-revalidate=300' } })
+      return Response.json(await history(hist), { headers: { 'cache-control': 's-maxage=60, stale-while-revalidate=60' } })
     }
     if (text) {
       return Response.json(await search(text.slice(0, 60)), { headers: { 'cache-control': 's-maxage=3600' } })
