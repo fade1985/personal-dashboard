@@ -170,6 +170,8 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
       // Con el precio en directo al final, si es más nuevo que el último punto de la gráfica
       let pts = d.intraday
       if (q && q.time > pts.at(-1)![0] && q.time - pts.at(-1)![0] < 12 * 60 * 60e3) pts = [...pts, [q.time, q.price]]
+      // Mismo minuto: la gráfica es el precio medio y el de la cabecera el de compra
+      else if (q && q.time >= pts.at(-1)![0]) pts = [...pts.slice(0, -1), [pts.at(-1)![0], q.price]]
       return { pts: thin(pts), base: q?.prevClose ?? d.intraday[0][1], intraday: true }
     }
     const days = RANGES.find((x) => x.id === r)!.days
@@ -213,6 +215,7 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
               {fund
                 ? `Fondo: se valora una vez al día · valor del ${new Date(q.time).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}`
                 : `Cotización de ${new Date(q.time).toLocaleString('es-ES', { weekday: 'long', hour: '2-digit', minute: '2-digit' })}`}
+              {q.bid != null && q.ask != null && ` · Compra ${eur(q.bid)} · Venta ${eur(q.ask)}`}
             </small>
           )}
         </div>

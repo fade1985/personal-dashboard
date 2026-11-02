@@ -1,6 +1,6 @@
-// Cotizaciones para la cartera (Vercel). Las acciones americanas (ISIN US…) se cotizan en su bolsa (Nasdaq o NYSE,
-// con antes y después de la apertura) y se pasan a euros. El resto de ISIN va a LS Exchange (Lang & Schwarz, el
-// mercado de Trade Republic, así el precio coincide con la app); si no está ahí, o con un símbolo, Yahoo Finance.
+// Cotizaciones para la cartera (Vercel). Los ISIN se cotizan en LS Exchange (Lang & Schwarz, uno de los mercados de
+// Trade Republic) con el precio de compra, como la cabecera de la app. Si no está ahí: una acción americana (ISIN US…)
+// va a su bolsa (Nasdaq o NYSE) pasada a euros, y el resto, o un símbolo, a Yahoo Finance.
 //   /api/quote?q=US84615Q1031&q=AAPL  → precio actual en euros de cada ISIN o símbolo
 //   /api/quote?search=spacex          → candidatos (símbolo, mercado) para elegir el bueno
 //   /api/quote?history=US84615Q1031   → precios del día y cierres diarios de siempre, para la ficha
@@ -29,6 +29,9 @@ export interface Quote {
   spark: number[]
   /** Fondo con un solo valor liquidativo al día */
   daily?: boolean
+  /** Lang & Schwarz: precio de compra (lo que te dan si vendes) y de venta, en euros */
+  bid?: number
+  ask?: number
 }
 
 /** [hora UTC en ms, precio en euros] */
@@ -126,9 +129,26 @@ type LsChart = { info: { plotlines?: { id: string; value: number }[] }; series: 
 const lsChart = (id: number, series: string) =>
   json<LsChart>(`${LS}/instrument/chart/dataForInstrument?instrumentId=${id}&marketId=${LS_EXCHANGE}&quotetype=mid&series=${series}&type=mini&localeId=1`)
 
+/** Compra y venta de ahora: la API de gráficas no las separa, pero la ficha de su web las trae en el HTML. */
+async function lsBidAsk(id: number): Promise<{ bid: number; ask: number } | null> {
+  try {
+    const res = await fetch(`https://www.ls-x.de/de/aktie/${id}`, { headers: UA, signal: AbortSignal.timeout(6000) })
+    if (!res.ok) return null
+    const html = await res.text()
+    const get = (f: string) => {
+      const m = new RegExp(`item="${id}@${LS_EXCHANGE}" field="${f}"[^>]*>([0-9.,]+)<`).exec(html)
+      return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : NaN
+    }
+    const bid = get('bid'), ask = get('ask')
+    return bid > 0 && ask > 0 ? { bid, ask } : null
+  } catch {
+    return null
+  }
+}
+
 async function lsQuote(isin: string): Promise<Quote> {
   const hit = await lsFind(isin)
-  const c = await lsChart(hit.id, 'intraday')
+  const [c, ba] = await Promise.all([lsChart(hit.id, 'intraday'), lsBidAsk(hit.id)])
   const data = c.series.intraday?.data ?? []
   const last = data.at(-1)
   if (!last) throw new Error('Lang & Schwarz sin precios')
@@ -136,10 +156,12 @@ async function lsQuote(isin: string): Promise<Quote> {
   // Un punto cada ~5 minutos basta para la minigráfica
   const step = Math.max(1, Math.round(data.length / 120))
   const spark = data.filter((_, i) => i % step === 0).map((d) => d[1])
-  if (spark.at(-1) !== last[1]) spark.push(last[1])
+  // El precio es el de compra (como la cabecera de Trade Republic); si no se pudo leer, el medio
+  const price = ba?.bid ?? last[1]
+  spark.push(price)
   return {
     symbol: isin, name: hit.displayname, exchange: 'LS Exchange', currency: 'EUR',
-    price: last[1], native: last[1], prevClose: prev, time: fromBerlin(last[0]), spark,
+    price, native: price, prevClose: prev, time: fromBerlin(last[0]), spark, ...ba,
   }
 }
 
@@ -183,17 +205,17 @@ const isinOf = (q: string) => (ISIN.test(q) ? q : /^([A-Z]{2}[A-Z0-9]{9}\d)\.[A-
 async function resolve(q: string): Promise<Quote> {
   const isin = isinOf(q)
   if (!isin) return inEur(await chart(q))
+  try {
+    return await lsQuote(isin)
+  } catch {
+    // Seguimos con su bolsa americana o con Yahoo
+  }
   if (isin.startsWith('US')) {
     try {
       return await usQuote(isin)
     } catch {
-      // Seguimos con Lang & Schwarz
+      // Seguimos con Yahoo
     }
-  }
-  try {
-    return await lsQuote(isin)
-  } catch {
-    // Seguimos con Yahoo
   }
   return inEur(isin === q ? await yahooPick(q) : await chart(q))
 }
@@ -214,6 +236,15 @@ async function yahooPick(q: string): Promise<Chart> {
 /** Histórico para la ficha: el día (de minuto en minuto o cada 5) y un cierre por día desde que cotiza. */
 async function history(q: string): Promise<History> {
   const isin = isinOf(q)
+  if (isin) {
+    const hit = await lsFind(isin).catch(() => null)
+    if (hit) {
+      const c = await lsChart(hit.id, 'intraday,history')
+      const fix = (d: Point[] = []) => d.map(([t, v]): Point => [fromBerlin(t), v])
+      return { intraday: fix(c.series.intraday?.data), daily: fix(c.series.history?.data) }
+    }
+  }
+  // Acción americana que no está en Lang & Schwarz: su bolsa, en euros
   const us = isin?.startsWith('US') ? await usTicker(isin).catch(() => null) : null
   if (us) {
     const [day, all] = await Promise.all([chart(us, '1d', '2m', true), chart(us, '10y', '1d')])
@@ -221,14 +252,6 @@ async function history(q: string): Promise<History> {
       const k = await toEur('USD')
       const pts = (c: Chart) => c.closes.map((v, i): Point => [c.times[i], v * k])
       return { intraday: pts(day), daily: pts(all) }
-    }
-  }
-  if (isin) {
-    const hit = await lsFind(isin).catch(() => null)
-    if (hit) {
-      const c = await lsChart(hit.id, 'intraday,history')
-      const fix = (d: Point[] = []) => d.map(([t, v]): Point => [fromBerlin(t), v])
-      return { intraday: fix(c.series.intraday?.data), daily: fix(c.series.history?.data) }
     }
   }
   const symbol = ISIN.test(q) ? (await yahooPick(q)).symbol : q

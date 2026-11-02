@@ -36,6 +36,9 @@ export interface Quote {
   spark: number[]
   /** Fondo: un valor liquidativo al día (la minigráfica es del último mes) */
   daily?: boolean
+  /** Lang & Schwarz: compra (el precio que se usa) y venta */
+  bid?: number
+  ask?: number
 }
 
 type QuoteResult = Quote | { error: string }
