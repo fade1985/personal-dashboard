@@ -146,7 +146,7 @@ function PriceChart({ pts, base, avg, buys, intraday, up }: {
 }
 
 export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }: {
-  p: Position; total: number; accountName?: string; color: string; onEdit: () => void; onClose: () => void
+  p: Position; total: number; accountName?: string; color: string; onEdit?: () => void; onClose: () => void
 }) {
   const q = p.quote
   const key = quoteKey(p.holding)
@@ -269,7 +269,9 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
           </p>
         )}
 
-        <button className="btn ghost pfd-edit" onClick={onEdit}><Pencil size={14} /> Editar compras</button>
+        {onEdit
+          ? <button className="btn ghost pfd-edit" onClick={onEdit}><Pencil size={14} /> Editar compras</button>
+          : <p className="faint" style={{ fontSize: 12.5, margin: '14px 0 0' }}>Las compras salen del extracto de Wise: para actualizarlas, vuelve a importarlo.</p>}
       </div>
     </div>
   )

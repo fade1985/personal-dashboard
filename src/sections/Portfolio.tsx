@@ -65,18 +65,14 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
         const r = await fetch(`/api/quote?q=${encodeURIComponent(isin)}`).then((x) => x.json()).catch(() => null)
         if (r?.[isin]?.name) names[isin] = r[isin].name
       }))
+      // El extracto (desde que abriste la cuenta) es la única fuente: sustituye todo lo que hubiera en esta cuenta
       setHoldings((l) => {
-        let next = [...l]
-        for (const [isin, lots] of found) {
-          const prev = next.find((h) => h.isin === isin && h.accountId === account!.id)
-          // Lo que viene del extracto sustituye a esas mismas compras; lo puesto a mano se queda
-          const ids = new Set(lots.map((x) => x.id))
-          const merged = [...(prev?.lots ?? []).filter((x) => !x.id.startsWith('wise-') && !ids.has(x.id)), ...lots]
-          next = prev
-            ? next.map((h) => (h === prev ? { ...h, lots: merged } : h))
-            : [...next, { id: crypto.randomUUID(), isin, name: names[isin] ?? isin, accountId: account!.id, lots }]
-        }
-        return next
+        const mine = l.filter((h) => h.accountId === account!.id)
+        const fresh = [...found].map(([isin, lots]) => {
+          const prev = mine.find((h) => h.isin === isin)
+          return prev ? { ...prev, lots } : { id: crypto.randomUUID(), isin, name: names[isin] ?? isin, accountId: account!.id, lots }
+        })
+        return [...l.filter((h) => h.accountId !== account!.id), ...fresh]
       })
       const n = [...found.values()].flat()
       setNote(`Importado: ${n.filter((x) => !x.kind).length} compras y ${n.filter((x) => x.kind === 'fee').length} cobros de comisión`)
@@ -102,7 +98,7 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
                 <input type="file" accept=".csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importWise(f) }} />
               </label>
             )}
-            <button className="btn sm ghost" onClick={() => setEditing('new')}><Plus size={14} /> Añadir posición</button>
+            {!isWise && <button className="btn sm ghost" onClick={() => setEditing('new')}><Plus size={14} /> Añadir posición</button>}
           </div>
         }
       />
@@ -131,19 +127,21 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
       ) : (
         <div className="empty">
           <div className="big">📈</div>
-          <p>Añade tus acciones o fondos con su ISIN y tus compras: el valor se actualiza solo con la cotización.</p>
+          <p>{isWise
+            ? 'Importa el extracto CSV de Wise (desde que empezaste): compras y comisiones salen de ahí.'
+            : 'Añade tus acciones o fondos con su ISIN y tus compras: el valor se actualiza solo con la cotización.'}</p>
         </div>
       )}
       {shown && !editing && createPortal(
         <HoldingDetail
           p={shown} total={totals?.value ?? 0} accountName={shownAccount?.name} color={shownAccount?.color ?? C}
-          onEdit={() => setEditing(shown.holding)} onClose={() => setViewing(null)}
+          onEdit={isWise ? undefined : () => setEditing(shown.holding)} onClose={() => setViewing(null)}
         />,
         document.body,
       )}
       {editing && createPortal(
         <HoldingModal
-          holding={editing === 'new' ? null : editing} accounts={invest.length ? invest : accounts} defaultAccountId={account?.id}
+          holding={editing === 'new' ? null : editing} accounts={(invest.length ? invest : accounts).filter((a) => !/wise/i.test(`${a.id} ${a.name}`))} defaultAccountId={account?.id}
           onClose={() => setEditing(null)}
           onSave={(h) => {
             setHoldings((l) => (l.some((x) => x.id === h.id) ? l.map((x) => (x.id === h.id ? h : x)) : [...l, h]))
