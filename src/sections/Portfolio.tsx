@@ -1,9 +1,9 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { ChartCandlestick, Plus, Search, Trash2, X } from 'lucide-react'
+import { ChartCandlestick, FileUp, Plus, Search, Trash2, X } from 'lucide-react'
 import { Card, CardTitle } from '../components/ui'
 import { eur, type Account } from '../lib/finance'
-import { position, quoteKey, searchSymbols, summarize, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
+import { parseWiseStatement, position, quoteKey, searchSymbols, summarize, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
 import { Money } from './Finance'
 import { HoldingDetail, Logo } from './PortfolioDetail'
 import { AccountIcon } from '../components/AccountIcon'
@@ -52,6 +52,38 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
   const shown = positions.find((p) => p.holding.id === viewing)
   const shownAccount = shown && accounts.find((a) => a.id === shown.holding.accountId)
   const invest = accounts.filter((a) => a.kind === 'invest')
+  const [note, setNote] = useState<string | null>(null)
+  const isWise = account && /wise/i.test(`${account.id} ${account.name}`)
+
+  /** Extracto CSV de Wise → una posición por ISIN con sus compras y las comisiones cobradas en participaciones. */
+  const importWise = async (file: File) => {
+    try {
+      const found = parseWiseStatement(await file.text())
+      if (!found.size) return setNote('El extracto no trae compras de fondos o acciones')
+      const names: Record<string, string> = {}
+      await Promise.all([...found.keys()].map(async (isin) => {
+        const r = await fetch(`/api/quote?q=${encodeURIComponent(isin)}`).then((x) => x.json()).catch(() => null)
+        if (r?.[isin]?.name) names[isin] = r[isin].name
+      }))
+      setHoldings((l) => {
+        let next = [...l]
+        for (const [isin, lots] of found) {
+          const prev = next.find((h) => h.isin === isin && h.accountId === account!.id)
+          // Lo que viene del extracto sustituye a esas mismas compras; lo puesto a mano se queda
+          const ids = new Set(lots.map((x) => x.id))
+          const merged = [...(prev?.lots ?? []).filter((x) => !x.id.startsWith('wise-') && !ids.has(x.id)), ...lots]
+          next = prev
+            ? next.map((h) => (h === prev ? { ...h, lots: merged } : h))
+            : [...next, { id: crypto.randomUUID(), isin, name: names[isin] ?? isin, accountId: account!.id, lots }]
+        }
+        return next
+      })
+      const n = [...found.values()].flat()
+      setNote(`Importado: ${n.filter((x) => !x.kind).length} compras y ${n.filter((x) => x.kind === 'fee').length} cobros de comisión`)
+    } catch (e) {
+      setNote(`No se pudo importar: ${(e as Error).message}`)
+    }
+  }
   // Fines de semana y festivos: el cambio es el de la última sesión
   const lastTrade = Math.max(0, ...positions.map((p) => p.quote?.time ?? 0))
   const dayLabel = !lastTrade || new Date(lastTrade).toDateString() === new Date().toDateString()
@@ -62,8 +94,19 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
       <CardTitle
         icon={account ? <AccountIcon a={account} /> : <ChartCandlestick size={16} />} color={account?.color ?? C}
         title={account ? <>Cartera <span className="faint" style={{ fontWeight: 400 }}>· {account.name}</span></> : 'Cartera'}
-        right={<button className="btn sm ghost" onClick={() => setEditing('new')}><Plus size={14} /> Añadir posición</button>}
+        right={
+          <div className="row" style={{ gap: 4 }}>
+            {isWise && (
+              <label className="btn sm ghost" title="CSV de Wise: Cuenta en EUR → Extractos → CSV">
+                <FileUp size={14} /> Importar extracto
+                <input type="file" accept=".csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importWise(f) }} />
+              </label>
+            )}
+            <button className="btn sm ghost" onClick={() => setEditing('new')}><Plus size={14} /> Añadir posición</button>
+          </div>
+        }
       />
+      {note && <div className="notice" style={{ marginBottom: 12 }}>{note} <button className="icon-btn" style={{ marginLeft: 'auto', width: 26, height: 26 }} onClick={() => setNote(null)}><X size={13} /></button></div>}
       {totals && (
         <div className="pf-head">
           <div>
@@ -154,7 +197,8 @@ function HoldingModal({ holding, accounts, defaultAccountId, onClose, onSave, on
   const [name, setName] = useState(holding?.name ?? '')
   const [accountId, setAccountId] = useState(holding?.accountId ?? defaultAccountId ?? accounts.find((a) => a.id === 'traderepublic')?.id ?? accounts[0]?.id ?? '')
   const [symbol, setSymbol] = useState(holding?.symbol ?? '')
-  const [lots, setLots] = useState<LotDraft[]>(holding?.lots.map(draftOf) ?? [blankLot()])
+  const [lots, setLots] = useState<LotDraft[]>(holding?.lots.filter((l) => !l.kind).map(draftOf) ?? [blankLot()])
+  const outs = holding?.lots.filter((l) => l.kind) ?? []
   const [found, setFound] = useState<Awaited<ReturnType<typeof searchSymbols>> | null>(null)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -162,7 +206,8 @@ function HoldingModal({ holding, accounts, defaultAccountId, onClose, onSave, on
   const parsed: Lot[] = lots
     .map((l) => ({ id: l.id, date: l.date || undefined, qty: parseNum(l.qty), price: parseNum(l.price), fee: parseNum(l.fee) || 0 }))
     .filter((l) => l.qty > 0 && l.price > 0)
-  const draft: Holding = { id: holding?.id ?? crypto.randomUUID(), isin: isin.trim().toUpperCase(), name: name.trim() || isin.trim().toUpperCase(), accountId, symbol: symbol.trim().toUpperCase() || undefined, lots: parsed }
+  const allLots = [...parsed, ...outs]
+  const draft: Holding = { id: holding?.id ?? crypto.randomUUID(), isin: isin.trim().toUpperCase(), name: name.trim() || isin.trim().toUpperCase(), accountId, symbol: symbol.trim().toUpperCase() || undefined, lots: allLots }
   const sum = position(draft)
   const validIsin = /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(draft.isin)
 
@@ -242,6 +287,11 @@ function HoldingModal({ holding, accounts, defaultAccountId, onClose, onSave, on
               </div>
             ))}
             <button className="btn sm ghost" onClick={() => setLots((x) => [...x, blankLot()])}><Plus size={13} /> Añadir compra</button>
+            {outs.length > 0 && (
+              <small className="faint">
+                Además hay {outs.length} salidas de participaciones del extracto ({fmt(-outs.reduce((s, l) => s + l.qty, 0), 4)} particip.: comisiones de gestión o ventas), que se mantienen.
+              </small>
+            )}
           </div>
 
           {sum.qty > 0 && (

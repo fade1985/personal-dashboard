@@ -188,7 +188,8 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
   const last = view?.pts.at(-1)?.[1] ?? q?.price ?? 0
   const change = view ? last - view.base : 0
   const changePct = view && view.base ? last / view.base - 1 : 0
-  const lots = [...p.holding.lots].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+  const lots = p.holding.lots.filter((l) => !l.kind).sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+  const feeLots = p.holding.lots.filter((l) => l.kind === 'fee')
   const buys = lots.filter((l) => l.date).map((l) => ({ t: new Date(`${l.date}T12:00:00`).getTime(), price: l.price }))
   const label = { '1D': 'en la sesión', '1S': 'en una semana', '1M': 'en un mes', '6M': 'en 6 meses', '1A': 'en un año', '5A': 'en 5 años', Máx: 'desde el inicio' }[r]
 
@@ -260,6 +261,13 @@ export function HoldingDetail({ p, total, accountName, color, onEdit, onClose }:
             )
           })}
         </div>
+
+        {feeLots.length > 0 && (
+          <p className="faint" style={{ fontSize: 12.5, margin: '10px 0 0' }}>
+            Comisión de gestión cobrada en participaciones: {feeLots.length} cobros, {fmt(-feeLots.reduce((s, l) => s + l.qty, 0))} particip.
+            ({eur(feeLots.reduce((s, l) => s - l.qty * l.price, 0))}). Como en Wise, descuenta de lo invertido.
+          </p>
+        )}
 
         <button className="btn ghost pfd-edit" onClick={onEdit}><Pencil size={14} /> Editar compras</button>
       </div>
