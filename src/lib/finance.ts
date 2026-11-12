@@ -93,12 +93,12 @@ export const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.id, c])) as Recor
 const DEFAULT_RULES: Rule[] = [
   // Primero lo más específico: pagar la tarjeta Carrefour no es ir al súper
   ...['trade republic', 'wise', 'indexa', 'myinvestor', 'degiro'].map((m) => ({ match: m, category: 'invest' })),
-  ...['traspaso', 'pago tarjeta', 'liquidacion tarjeta', 'carrefour pass', 'servicios financieros carrefour', 'paypal'].map((m) => ({ match: m, category: 'transfer' })),
+  ...['traspaso', 'pago tarjeta', 'liquidacion tarjeta', 'carrefour pass', 'servicios financieros carrefour'].map((m) => ({ match: m, category: 'transfer' })),
   // CaixaBank pone los recibos del préstamo como «PRES.<número>»
   ...['pres.', 'hipoteca', 'prestamo hipotecario', 'cuota prestamo'].map((m) => ({ match: m, category: 'mortgage' })),
   ...['mercadona', 'carrefour', 'lidl', 'aldi', 'alcampo', 'eroski', 'supermercado', 'ahorramas', 'hipercor', 'consum', 'bonarea'].map((m) => ({ match: m, category: 'super' })),
   ...[' dia ', 'supermercados dia'].map((m) => ({ match: m, category: 'super' })),
-  ...['glovo', 'just eat', 'uber eats', 'restaurante', 'telepizza', 'burger', 'mcdonald', 'kfc', 'starbucks', 'cafeteria', 'taberna', 'vips', 'goiko'].map((m) => ({ match: m, category: 'food' })),
+  ...['glovo', 'just eat', 'justeat', 'uber eats', 'restaurante', 'telepizza', 'burger', 'mcdonald', 'kfc', 'starbucks', 'cafeteria', 'taberna', 'vips', 'goiko'].map((m) => ({ match: m, category: 'food' })),
   ...['renfe', 'metro de madrid', ' emt ', 'cabify', 'uber', 'bolt', 'repsol', 'cepsa', 'galp', 'gasolinera', 'parking', 'blablacar', 'consorcio transportes', 'ouigo', 'iryo'].map((m) => ({ match: m, category: 'transport' })),
   ...['netflix', 'spotify', 'disney', 'hbo', 'max.com', 'prime video', 'apple.com', 'google one', 'youtube', 'nintendo', 'playstation', 'xbox', 'microsoft', 'dazn', 'chatgpt', 'openai', 'anthropic', 'claude'].map((m) => ({ match: m, category: 'subs' })),
   ...['iberdrola', 'endesa', 'naturgy', 'holaluz', 'totalenergies', 'vodafone', 'movistar', 'orange', ' digi ', 'masmovil', 'pepephone', 'jazztel', 'canal de isabel', 'aguas'].map((m) => ({ match: m, category: 'bills' })),
@@ -116,7 +116,6 @@ export const DEFAULT_ACCOUNTS: Account[] = [
   { id: 'santander', name: 'Santander', kind: 'bank', color: '#ec0000', emoji: '🏦' },
   { id: 'caixabank', name: 'CaixaBank', kind: 'bank', color: '#0b8fd6', emoji: '⭐' },
   { id: 'carrefour', name: 'Carrefour Pass', kind: 'card', color: '#2563eb', emoji: '💳' },
-  { id: 'paypal', name: 'PayPal', kind: 'wallet', color: '#38bdf8', emoji: '🅿️' },
   { id: 'wise', name: 'Wise', kind: 'invest', color: '#9fe870', emoji: '🌍' },
   { id: 'traderepublic', name: 'Trade Republic', kind: 'invest', color: '#e5e7eb', emoji: '📊' },
 ]

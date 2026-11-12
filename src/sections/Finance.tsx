@@ -19,6 +19,7 @@ import { STATUS_KEY, runBankMail, type BankMailStatus } from '../lib/bankMail'
 import { useGoogleCtx } from '../lib/nav'
 import { usePersistentState } from '../lib/storage'
 import { relTime } from '../components/ui'
+import { parseCarrefourPass, pdfLines } from '../lib/carrefourPdf'
 
 const C = SECTION_COLOR.finance
 const today = () => new Date().toISOString().slice(0, 10)
@@ -112,7 +113,7 @@ export default function Finance() {
       onDrop={onDrop}
     >
       <input
-        ref={fileRef} type="file" hidden accept=".csv,.xlsx,.xls,.txt,.ods"
+        ref={fileRef} type="file" hidden accept=".csv,.xlsx,.xls,.txt,.ods,.pdf"
         onChange={(e) => {
           const file = e.target.files?.[0]
           if (file) setPending({ file, accountId: pickFor.current })
@@ -553,7 +554,7 @@ function Movements({ month, accounts, onToast }: { month: string; accounts: Acco
           <p>Aún no hay movimientos.<br />Descarga los movimientos desde la web de tu banco (Excel o CSV) y arrástralos aquí.</p>
           <div className="faint" style={{ fontSize: 12.5, maxWidth: 520, margin: '0 auto', lineHeight: 1.6 }}>
             <b>Santander:</b> Cuentas → Movimientos → Descargar (Excel) · <b>CaixaBank:</b> Cuentas → Movimientos → Exportar ·{' '}
-            <b>PayPal:</b> Actividad → Informes → Descargar (CSV) · <b>Wise:</b> Saldo → Extractos → CSV
+            <b>Carrefour Pass:</b> el extracto mensual en PDF · <b>Wise:</b> Saldo → Extractos → CSV
           </div>
         </div>
       ) : (
@@ -652,10 +653,21 @@ function CategoryPicker({ tx, onClose, onPick }: { tx: Tx; onClose: () => void; 
 
 // ---------- Importación ----------
 
-interface Sheet { name: string; rows: Cell[][] }
+interface Sheet { name: string; rows: Cell[][]; account?: string; note?: string }
 
 async function readFile(file: File): Promise<Sheet[]> {
   const buf = await file.arrayBuffer()
+  if (/\.pdf$/i.test(file.name)) {
+    const st = parseCarrefourPass(await pdfLines(buf))
+    if (!st) throw new Error('de los PDF solo se leen los extractos de Carrefour Pass')
+    const off = st.total != null && Math.abs(st.total - st.sum) > 0.005
+    const note = [
+      'Sin los «CARGO COMPRAS» (son el cobro en tu cuenta de las compras ya contadas).',
+      st.next ? `${st.next === 1 ? 'La operación' : `Las ${st.next} operaciones`} «para el próximo recibo» se ${st.next === 1 ? 'importará' : 'importarán'} con el extracto siguiente.` : '',
+      off ? `Ojo: las compras leídas suman ${eur(st.sum)} y el extracto dice ${eur(st.total!)}.` : '',
+    ].filter(Boolean).join(' ')
+    return [{ name: 'Carrefour Pass', rows: st.rows, account: 'carrefour', note }]
+  }
   let wb: XLSX.WorkBook
   if (/\.(csv|txt)$/i.test(file.name)) {
     // Muchos bancos exportan en Windows-1252: si no es UTF-8 válido, probamos con ese
@@ -676,7 +688,7 @@ async function readFile(file: File): Promise<Sheet[]> {
 }
 
 const ACCOUNT_HINTS: [RegExp, string][] = [
-  [/santander/i, 'santander'], [/caixa/i, 'caixabank'], [/carrefour|pass/i, 'carrefour'], [/paypal|download/i, 'paypal'],
+  [/santander/i, 'santander'], [/caixa/i, 'caixabank'], [/carrefour|pass/i, 'carrefour'],
   [/wise|transferwise|statement_/i, 'wise'], [/trade.?republic/i, 'traderepublic'],
 ]
 
@@ -697,6 +709,9 @@ function ImportModal({ file, accountId, onClose, onDone }: {
       const best = s.findIndex((x) => x.rows.length > 1)
       setSheets(s)
       setSheetIdx(Math.max(0, best))
+      // El PDF dice de qué cuenta es
+      const own = s[Math.max(0, best)]?.account
+      if (!accountId && own && accounts.some((a) => a.id === own)) setAcct(own)
     }).catch((e) => setError(`No se pudo leer el archivo: ${(e as Error).message}`))
   }, [file])
 
@@ -786,6 +801,7 @@ function ImportModal({ file, accountId, onClose, onDone }: {
               <div className="error" style={{ marginTop: 12 }}>No se ha reconocido ningún movimiento: revisa qué columna es la fecha y cuál el importe.</div>
             ) : (
               <>
+                {sheet?.note && <div className="notice" style={{ margin: '12px 0 0' }}>{sheet.note}</div>}
                 <div className="import-stats">
                   <span><b>{parsed.length}</b> movimientos</span>
                   <span><b style={{ color: C }}>{fresh}</b> nuevos</span>
@@ -847,9 +863,9 @@ function BankMailBar({ onToast }: { onToast: (s: string) => void }) {
     <div className={`bankmail ${status.error ? 'err' : ''}`}>
       <span className="bankmail-icon" aria-hidden>✉️</span>
       <div className="bankmail-text">
-        <b>Avisos de CaixaBank y PayPal por correo</b>
+        <b>Avisos de CaixaBank por correo</b>
         <span>
-          {needAuth ? 'La sesión de Google ha caducado o no está conectada: conéctala para leer los avisos de CaixaBank y PayPal'
+          {needAuth ? 'La sesión de Google ha caducado o no está conectada: conéctala para leer los avisos de CaixaBank'
             : status.error ? `Error al leerlos: ${status.error}`
             : status.at ? `Leídos ${relTime(new Date(status.at))}${status.added ? `: ${status.added} movimientos nuevos` : ''}${status.balances ? `${status.added ? ' y' : ':'} saldo de CaixaBank actualizado` : ''}. Se vuelven a mirar cada 15 minutos.`
             : 'Aún no se han leído'}

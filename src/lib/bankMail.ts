@@ -2,22 +2,20 @@
 //   "Movimientos de tarjetas":            compras con la tarjeta (MyCard, de crédito: se pagan de golpe a fin de mes)
 //   "Todos los movimientos de la cuenta": cargos y abonos en la cuenta (el cargo de MYCARD es el pago de la tarjeta)
 //   "Saldo a una fecha concreta":         saldo disponible de la cuenta ese día
-// Avisos de PayPal (servicio@paypal.es): pagos y reembolsos, con el comercio de verdad. Van al monedero
-// PayPal; si se pagaron con tarjeta o banco, un traspaso los compensa (el cargo "PAYPAL *…" del banco
-// ya cuenta como traspaso por las reglas), así el gasto se cuenta una vez y con su categoría.
+// Los avisos de PayPal ya no se leen: PayPal paga con la tarjeta Carrefour Pass y esas compras
+// llegan con su extracto en PDF ("PAYPAL *COMERCIO").
 // Se leen de tu Gmail desde el navegador, con el mismo permiso de lectura que la tarjeta de Correo.
 
 import { useEffect } from 'react'
 import { gapi } from './google'
 import { readStore, saveStore } from './storage'
-import { DEFAULT_ACCOUNTS, categorize, norm, type Account, type Rule, type Tx } from './finance'
+import { DEFAULT_ACCOUNTS, categorize, type Account, type Rule, type Tx } from './finance'
 import { parseCaixa, parsePayPal } from './bankMailParse'
 
 export { parseCaixa, parsePayPal }
 
 const CAIXA = 'alerta@caixabank.com'
-const PAYPAL = 'servicio@paypal.es'
-const SENDERS = [CAIXA, PAYPAL]
+const SENDERS = [CAIXA]
 const INIT_KEY = 'bankmail-init'
 const SEEN_KEY = 'bankmail-seen'
 export const STATUS_KEY = 'bankmail-status'
@@ -157,39 +155,8 @@ export async function syncBankMail(): Promise<BankMailStatus> {
     added++
   }
 
-  const ensurePayPal = () => {
-    let a = accounts.find((x) => x.id === 'paypal') ?? accounts.find((x) => /paypal/i.test(x.name))
-    if (!a) {
-      a = { id: 'paypal', name: 'PayPal', kind: 'wallet', color: '#38bdf8', emoji: '🅿️', domain: 'paypal.com' }
-      accounts = [...accounts, a]
-      newAccounts.set(a.id, a)
-    }
-    return a
-  }
-  const ymdOf = (at: number) => { const d = new Date(at); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
   for (const m of mails) {
-    if (m.from.includes(PAYPAL)) {
-      seen.add(m.id)
-      const p = parsePayPal(m.subject, m.text)
-      if (!p) continue
-      const pp = ensurePayPal()
-      const date = ymdOf(m.at)
-      const amount = p.kind === 'payment' ? -p.amount : p.amount
-      const key = norm(p.merchant).trim()
-      // "Has autorizado un pago" y el recibo del mismo pago: solo una vez
-      const near = (t: Tx) => t.accountId === pp.id && t.source === 'mail' && t.amount === amount && norm(t.desc).trim() === key
-        && Math.abs(Date.parse(t.date) - Date.parse(date)) <= 3 * 864e5
-      if (txs.some(near)) continue
-      // Un reembolso resta del gasto con el que se pagó (misma categoría que el último pago a ese comercio)
-      const prev = [...txs].reverse().find((t) => t.accountId === pp.id && t.amount < 0 && norm(t.desc).trim() === key)
-      const category = p.kind === 'refund' ? prev?.category ?? categorize(p.merchant, -1, rules) : categorize(p.merchant, amount, rules)
-      const id = `mail:${m.id}:0`
-      push({ id, accountId: pp.id, date, desc: p.merchant, amount, category, source: 'mail' })
-      if (!p.balance)
-        push({ id: `${id}:fund`, accountId: pp.id, date, desc: p.kind === 'payment' ? 'Cargado a tu tarjeta o banco' : 'Devuelto a tu tarjeta o banco', amount: -amount, category: 'transfer', source: 'mail' })
-      continue
-    }
     const { moves, balances: bals } = parseCaixa(m.text)
     moves.forEach((mv, k) => {
       const id = `mail:${m.id}:${k}`
