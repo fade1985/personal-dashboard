@@ -205,7 +205,13 @@ export default function Finance() {
           <CashflowBars data={months} selected={month} onSelect={setMonth} />
         </Card>
 
-        <PortfolioCard accounts={accounts} i={3} />
+        {/* Una cartera por cuenta de inversión (y por cualquier otra cuenta que tenga posiciones) */}
+        {(() => {
+          const withPf = accounts.filter((a) => a.kind === 'invest' || holdings.some((h) => h.accountId === a.id))
+          return withPf.map((a, k) => (
+            <PortfolioCard key={a.id} accounts={accounts} account={a} i={3 + k} className={withPf.length > 1 ? 'span-6' : 'span-12'} />
+          ))
+        })()}
 
         {/* Cuentas */}
         <div className="span-12">

@@ -135,6 +135,20 @@ export function position(h: Holding, q?: QuoteResult): Position {
   }
 }
 
+/** Totales de un conjunto de posiciones (solo las que ya tienen cotización); null si ninguna la tiene. */
+export function summarize(positions: Position[]) {
+  let value = 0, cost = 0, day = 0, prev = 0, priced = 0
+  for (const p of positions) {
+    if (p.value == null) continue
+    priced++
+    value += p.value
+    cost += p.cost
+    day += p.day ?? 0
+    prev += p.value - (p.day ?? 0)
+  }
+  return priced ? { value, cost, gain: value - cost, gainPct: cost ? (value - cost) / cost : 0, day, dayPct: prev ? day / prev : 0 } : null
+}
+
 /** Posiciones valoradas, totales y valor por cuenta (para sumarlo al patrimonio). */
 export function usePortfolio() {
   const [holdings, setHoldings] = useHoldings()
@@ -143,24 +157,9 @@ export function usePortfolio() {
   return useMemo(() => {
     const positions = holdings.map((h) => position(h, cache.data[quoteKey(h)]))
     const byAccount: Record<string, number> = {}
-    let value = 0, cost = 0, day = 0, prev = 0, priced = 0
-    for (const p of positions) {
-      if (p.value == null) {
-        // Sin cotización todavía: cuenta a precio de coste para no hundir el patrimonio
-        byAccount[p.holding.accountId] = (byAccount[p.holding.accountId] ?? 0) + p.cost
-        continue
-      }
-      priced++
-      byAccount[p.holding.accountId] = (byAccount[p.holding.accountId] ?? 0) + p.value
-      value += p.value
-      cost += p.cost
-      day += p.day ?? 0
-      prev += p.value - (p.day ?? 0)
-    }
-    return {
-      holdings, setHoldings, positions, byAccount, updatedAt: cache.at,
-      totals: priced ? { value, cost, gain: value - cost, gainPct: cost ? (value - cost) / cost : 0, day, dayPct: prev ? day / prev : 0 } : null,
-    }
+    // Sin cotización todavía: cuenta a precio de coste para no hundir el patrimonio
+    for (const p of positions) byAccount[p.holding.accountId] = (byAccount[p.holding.accountId] ?? 0) + (p.value ?? p.cost)
+    return { holdings, setHoldings, positions, byAccount, updatedAt: cache.at, totals: summarize(positions) }
   }, [holdings, setHoldings, cache])
 }
 

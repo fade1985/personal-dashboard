@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom'
 import { ChartCandlestick, Plus, Search, Trash2, X } from 'lucide-react'
 import { Card, CardTitle } from '../components/ui'
 import { eur, type Account } from '../lib/finance'
-import { position, quoteKey, searchSymbols, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
+import { position, quoteKey, searchSymbols, summarize, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
 import { Money } from './Finance'
 import { HoldingDetail, Logo } from './PortfolioDetail'
+import { AccountIcon } from '../components/AccountIcon'
 
 const C = '#22d3ee'
 
@@ -40,8 +41,12 @@ function Spark({ points, up }: { points: number[]; up: boolean }) {
   )
 }
 
-export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number }) {
-  const { positions, totals, updatedAt, setHoldings } = usePortfolio()
+/** Cartera de una cuenta (Trade Republic, Wise…), con sus propios totales. Sin `account`, todas juntas. */
+export function PortfolioCard({ accounts, account, i, className = 'span-12' }: { accounts: Account[]; account?: Account; i: number; className?: string }) {
+  const all = usePortfolio()
+  const { updatedAt, setHoldings } = all
+  const positions = account ? all.positions.filter((p) => p.holding.accountId === account.id) : all.positions
+  const totals = account ? summarize(positions) : all.totals
   const [editing, setEditing] = useState<Holding | 'new' | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
   const shown = positions.find((p) => p.holding.id === viewing)
@@ -53,9 +58,10 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
     ? 'Hoy' : `El ${new Date(lastTrade).toLocaleDateString('es-ES', { weekday: 'long' })}`
 
   return (
-    <Card className="span-12 pf" i={i} accent={C}>
+    <Card className={`${className} pf`} i={i} accent={account?.color ?? C}>
       <CardTitle
-        icon={<ChartCandlestick size={16} />} color={C} title="Cartera"
+        icon={account ? <AccountIcon a={account} /> : <ChartCandlestick size={16} />} color={account?.color ?? C}
+        title={account ? <>Cartera <span className="faint" style={{ fontWeight: 400 }}>· {account.name}</span></> : 'Cartera'}
         right={<button className="btn sm ghost" onClick={() => setEditing('new')}><Plus size={14} /> Añadir posición</button>}
       />
       {totals && (
@@ -94,7 +100,7 @@ export function PortfolioCard({ accounts, i }: { accounts: Account[]; i: number 
       )}
       {editing && createPortal(
         <HoldingModal
-          holding={editing === 'new' ? null : editing} accounts={invest.length ? invest : accounts}
+          holding={editing === 'new' ? null : editing} accounts={invest.length ? invest : accounts} defaultAccountId={account?.id}
           onClose={() => setEditing(null)}
           onSave={(h) => {
             setHoldings((l) => (l.some((x) => x.id === h.id) ? l.map((x) => (x.id === h.id ? h : x)) : [...l, h]))
@@ -141,12 +147,12 @@ interface LotDraft { id: string; date: string; qty: string; price: string; fee: 
 const draftOf = (l: Lot): LotDraft => ({ id: l.id, date: l.date ?? '', qty: fmt(l.qty, 8), price: fmt(l.price, 6), fee: fmt(l.fee, 2) })
 const blankLot = (): LotDraft => ({ id: crypto.randomUUID(), date: '', qty: '', price: '', fee: '1' })
 
-function HoldingModal({ holding, accounts, onClose, onSave, onDelete }: {
-  holding: Holding | null; accounts: Account[]; onClose: () => void; onSave: (h: Holding) => void; onDelete: (id: string) => void
+function HoldingModal({ holding, accounts, defaultAccountId, onClose, onSave, onDelete }: {
+  holding: Holding | null; accounts: Account[]; defaultAccountId?: string; onClose: () => void; onSave: (h: Holding) => void; onDelete: (id: string) => void
 }) {
   const [isin, setIsin] = useState(holding?.isin ?? '')
   const [name, setName] = useState(holding?.name ?? '')
-  const [accountId, setAccountId] = useState(holding?.accountId ?? accounts.find((a) => a.id === 'traderepublic')?.id ?? accounts[0]?.id ?? '')
+  const [accountId, setAccountId] = useState(holding?.accountId ?? defaultAccountId ?? accounts.find((a) => a.id === 'traderepublic')?.id ?? accounts[0]?.id ?? '')
   const [symbol, setSymbol] = useState(holding?.symbol ?? '')
   const [lots, setLots] = useState<LotDraft[]>(holding?.lots.map(draftOf) ?? [blankLot()])
   const [found, setFound] = useState<Awaited<ReturnType<typeof searchSymbols>> | null>(null)
