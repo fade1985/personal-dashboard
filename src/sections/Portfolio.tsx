@@ -89,7 +89,7 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
     <Card className={`${className} pf`} i={i} accent={account?.color ?? C}>
       <CardTitle
         icon={account ? <AccountIcon a={account} /> : <ChartCandlestick size={16} />} color={account?.color ?? C}
-        title={account ? <>Cartera <span className="faint" style={{ fontWeight: 400 }}>· {account.name}</span></> : 'Cartera'}
+        title={account ? account.name : 'Cartera'}
         right={
           <div className="row" style={{ gap: 4 }}>
             {isWise && (
