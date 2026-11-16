@@ -35,6 +35,11 @@ export interface Account {
   mapping?: ColumnMapping
   /** Últimas cifras de la cuenta o la tarjeta ("603", "1870"): así se reconocen en los avisos del banco por correo */
   ending?: string
+  /** Tarjetas: crédito (se paga todo junto una vez al mes) o débito (cada compra se cobra al momento en la cuenta).
+   *  Sin elegir, se deduce de los movimientos. */
+  cardType?: 'credit' | 'debit'
+  /** Nombre de la tarjeta en los avisos del banco ("MYCARD"): así se reconoce su cobro en la cuenta */
+  product?: string
 }
 
 export interface Tx {
@@ -49,6 +54,9 @@ export interface Tx {
   manual?: boolean
   /** Llegó por un aviso del banco por correo (al importar el extracto, el extracto manda). */
   source?: 'mail'
+  /** Cargo en la cuenta que repite algo ya contado en una tarjeta (su cobro mensual, o una compra con la de débito):
+   *  pasa a traspaso y aquí se guarda la categoría que tenía, por si deja de serlo. */
+  mirror?: string
 }
 
 export interface Rule {
@@ -158,6 +166,95 @@ export function recategorizeFallbacks(txs: Tx[], rules: Rule[]): Tx[] | null {
   return changed ? out : null
 }
 
+// ---------- Tarjetas de CaixaBank: que nada cuente dos veces ----------
+
+const DAY = 864e5
+export const isCaixa = (a: Account) => /caixa/i.test(`${a.id} ${a.name} ${a.domain ?? ''}`)
+
+/** Cómo sale la tarjeta en los cargos de la cuenta ("MYCARD"); las creadas antes de guardarlo, por su nombre. */
+export const cardProduct = (a: Account) => norm(a.product ?? a.name.replace(/caixabank/i, '')).trim()
+
+/** El cargo de la cuenta es el cobro mensual de alguna tarjeta. */
+const settlesCard = (t: Tx, cards: Account[]) => t.amount < 0 && cards.some((c) => {
+  const p = cardProduct(c)
+  return p.length >= 3 && norm(t.desc).includes(` ${p} `)
+})
+
+/**
+ * Compras de la tarjeta que también llegan como cargo en la cuenta (mismo importe, de 0 a 4 días después):
+ * es lo que pasa con una de débito. Devuelve, para cada cargo de la cuenta, la compra a la que repite.
+ */
+function debitTwins(card: Account, txs: Tx[], bankIds: Set<string>, cards: Account[]) {
+  const buys = txs.filter((t) => t.accountId === card.id && t.amount < 0 && !t.id.endsWith(':card'))
+  const pool = new Map<number, Tx[]>()
+  for (const t of txs) {
+    if (!bankIds.has(t.accountId) || t.amount >= 0 || t.manual || settlesCard(t, cards)) continue
+    pool.set(t.amount, [...(pool.get(t.amount) ?? []), t])
+  }
+  const twins = new Map<string, string>()
+  for (const b of [...buys].sort((x, y) => x.date.localeCompare(y.date))) {
+    const hit = pool.get(b.amount)?.find((t) => !twins.has(t.id) && Date.parse(t.date) - Date.parse(b.date) >= 0 && Date.parse(t.date) - Date.parse(b.date) <= 4 * DAY)
+    if (hit) twins.set(hit.id, b.id)
+  }
+  return { twins, buys: buys.length }
+}
+
+/** Débito si lo has elegido así o, sin elegir, si la mayoría de sus compras aparecen también como cargo en la cuenta. */
+export function cardIsDebit(card: Account, txs: Tx[], accounts: Account[]) {
+  if (card.cardType) return card.cardType === 'debit'
+  if (card.kind !== 'card' || !isCaixa(card)) return false
+  const cards = accounts.filter((a) => a.kind === 'card' && isCaixa(a))
+  const bankIds = new Set(accounts.filter((a) => a.kind === 'bank' && isCaixa(a)).map((a) => a.id))
+  const { twins, buys } = debitTwins(card, txs, bankIds, cards)
+  return twins.size >= 2 && twins.size >= buys * 0.5
+}
+
+/**
+ * Ajusta los movimientos de CaixaBank para que ningún gasto cuente dos veces:
+ *  - el cobro mensual de una tarjeta de crédito en la cuenta es un traspaso, y en la tarjeta se anota como "Pago de la tarjeta";
+ *  - con una de débito, el cargo en la cuenta de cada compra es un traspaso (el gasto, con su comercio, queda en la tarjeta).
+ * Devuelve la misma lista si no cambia nada.
+ */
+export function reconcileCards(txs: Tx[], accounts: Account[]): Tx[] {
+  const cards = accounts.filter((a) => a.kind === 'card' && a.ending && isCaixa(a))
+  const banks = accounts.filter((a) => a.kind === 'bank' && isCaixa(a))
+  const bankIds = new Set(banks.map((a) => a.id))
+  // Partimos de cero: sin los pagos de tarjeta calculados y con las categorías de antes en los cargos marcados
+  let out = txs
+    .filter((t) => !(t.source === 'mail' && t.id.endsWith(':card')))
+    .map((t) => (t.mirror != null ? { ...t, category: t.manual ? t.category : t.mirror, mirror: undefined } : t))
+
+  const mark = (ids: Set<string>) => {
+    out = out.map((t) => (ids.has(t.id) && !t.manual ? { ...t, mirror: t.category, category: 'transfer' } : t))
+  }
+  // Cobros mensuales de las tarjetas
+  mark(new Set(out.filter((t) => bankIds.has(t.accountId) && t.category !== 'transfer' && settlesCard(t, cards)).map((t) => t.id)))
+  // Compras con tarjeta de débito repetidas en la cuenta
+  for (const c of cards) {
+    if (!cardIsDebit(c, out, accounts)) continue
+    mark(new Set(debitTwins(c, out, bankIds, cards).twins.keys()))
+  }
+  // Pago de cada tarjeta de crédito: el cobro del día 1 paga las compras ANTERIORES a ese día; nunca más de lo que se conoce
+  // (las compras de antes de empezar a leer los avisos no están, y sin esto la tarjeta quedaría en positivo)
+  for (const c of cards) {
+    if (cardIsDebit(c, out, accounts)) continue
+    const settlements = out
+      .filter((t) => bankIds.has(t.accountId) && t.category === 'transfer' && settlesCard(t, [c]))
+      .sort((a, b) => a.date.localeCompare(b.date))
+    for (const st of settlements) {
+      const owed = -out.filter((t) => t.accountId === c.id && t.date < st.date).reduce((sum, t) => sum + t.amount, 0)
+      const paid = Math.min(-st.amount, Math.max(0, Math.round(owed * 100) / 100))
+      if (paid > 0) out.push({ id: `${st.id}:card`, accountId: c.id, date: st.date, desc: 'Pago de la tarjeta', amount: paid, category: 'transfer', source: 'mail' })
+    }
+  }
+  const before = new Map(txs.map((t) => [t.id, t]))
+  const same = out.length === txs.length && out.every((t) => {
+    const b = before.get(t.id)
+    return b && b.amount === t.amount && b.category === t.category && b.mirror === t.mirror
+  })
+  return same ? txs : out
+}
+
 /** Saldo actual: el manual si es más reciente que el último saldo importado. */
 export function accountBalance(a: Account, txs: Tx[]): { value: number; at: string } | null {
   const own = txs.filter((t) => t.accountId === a.id)
@@ -210,7 +307,8 @@ export function spendByCategory(txs: Tx[], key: string) {
 /** `extra`: valor de la cartera de cada cuenta (posiciones con cotización), que se suma a su efectivo. */
 export function netWorth(accounts: Account[], txs: Tx[], extra: Record<string, number> = {}) {
   const balances = Object.fromEntries(accounts.map((a) => {
-    const b = accountBalance(a, txs)
+    // Una tarjeta de débito no acumula deuda: sus compras ya salen del saldo de la cuenta
+    const b = a.kind === 'card' && !a.manual && cardIsDebit(a, txs, accounts) ? null : accountBalance(a, txs)
     const x = extra[a.id]
     if (x == null) return [a.id, b]
     return [a.id, { value: (b?.value ?? 0) + x, at: new Date().toISOString().slice(0, 10) }]

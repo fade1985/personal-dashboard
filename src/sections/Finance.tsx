@@ -9,7 +9,7 @@ import { SECTION_COLOR } from '../lib/nav'
 import { Card, CardTitle, CountUp } from '../components/ui'
 import {
   CAT, CATEGORIES, KIND_LABEL, applyMapping, categorize, eur, findHeaderRow, guessMapping, headersOf, lastMonths, merchantOf,
-  monthFlow, monthKey, netWorth, norm, recategorizeFallbacks, spendByCategory, txIds, useAccounts, usePrivacy, useRules, useTxs,
+  cardIsDebit, cardProduct, isCaixa, monthFlow, monthKey, netWorth, norm, recategorizeFallbacks, reconcileCards, spendByCategory, txIds, useAccounts, usePrivacy, useRules, useTxs,
   type Account, type AccountKind, type Cell, type ColumnMapping, type Tx,
 } from '../lib/finance'
 import { AccountIcon, accountDomain, shrinkLogo } from '../components/AccountIcon'
@@ -57,9 +57,11 @@ export default function Finance() {
   const pickFor = useRef<string | undefined>(undefined)
 
   useEffect(() => {
-    const next = recategorizeFallbacks(txs, rules)
-    if (next) setTxs(next)
-  }, [txs, rules, setTxs])
+    const recat = recategorizeFallbacks(txs, rules) ?? txs
+    // Que el cobro de las tarjetas y las compras con débito no cuenten dos veces
+    const next = reconcileCards(recat, accounts)
+    if (next !== txs) setTxs(next)
+  }, [txs, rules, accounts, setTxs])
 
   // Si el mes actual aún no tiene datos, empezamos por el último mes con movimientos
   useEffect(() => {
@@ -224,6 +226,7 @@ export default function Finance() {
             {accounts.map((a, k) => (
               <AccountCard
                 key={a.id} a={a} i={k + 3} balance={worth.balances[a.id]} count={txs.filter((t) => t.accountId === a.id).length}
+                debit={a.kind === 'card' && cardIsDebit(a, txs, accounts)}
                 onImport={() => openPicker(a.id)} onEdit={() => setEditing(a)}
               />
             ))}
@@ -364,8 +367,8 @@ function Sparkline({ points, color }: { points: number[]; color: string }) {
 
 // ---------- Cuentas ----------
 
-function AccountCard({ a, i, balance, count, onImport, onEdit }: {
-  a: Account; i: number; balance: { value: number; at: string } | null; count: number; onImport: () => void; onEdit: () => void
+function AccountCard({ a, i, balance, count, debit, onImport, onEdit }: {
+  a: Account; i: number; balance: { value: number; at: string } | null; count: number; debit?: boolean; onImport: () => void; onEdit: () => void
 }) {
   const gain = a.kind === 'invest' && balance && a.invested ? balance.value - a.invested : null
   return (
@@ -374,12 +377,12 @@ function AccountCard({ a, i, balance, count, onImport, onEdit }: {
         <AccountIcon a={a} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="acct-name">{a.name}</div>
-          <div className="faint" style={{ fontSize: 12 }}>{KIND_LABEL[a.kind]}</div>
+          <div className="faint" style={{ fontSize: 12 }}>{debit ? 'Tarjeta de débito' : KIND_LABEL[a.kind]}</div>
         </div>
         <button className="icon-btn" onClick={onEdit} title="Editar"><Pencil size={14} /></button>
       </div>
       <div className="acct-balance">
-        {balance ? <Money v={balance.value} /> : <span className="faint">—</span>}
+        {balance ? <Money v={balance.value} /> : <span className="faint">{debit ? 'Sin deuda' : '—'}</span>}
       </div>
       <div className="row" style={{ justifyContent: 'space-between', gap: 8, minHeight: 34 }}>
         <div className="faint" style={{ fontSize: 12 }}>
@@ -387,7 +390,7 @@ function AccountCard({ a, i, balance, count, onImport, onEdit }: {
             <span className={gain >= 0 ? 'pos' : 'neg'} style={{ fontWeight: 600 }}>
               <Money v={gain} sign decimals={0} /> ({Math.round((gain / a.invested!) * 1000) / 10}%)
             </span>
-          ) : balance ? `a ${new Date(balance.at + 'T12:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}` : a.kind === 'invest' ? 'Anota su valor' : 'Sin datos'}
+          ) : balance ? `a ${new Date(balance.at + 'T12:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}` : a.kind === 'invest' ? 'Anota su valor' : debit ? 'Se cobra al momento en la cuenta' : 'Sin datos'}
           {count > 0 && <> · {count} mov.</>}
         </div>
         {a.kind === 'invest' ? <Sparkline points={(a.history ?? []).map((h) => h.value)} color={a.color} /> : (
@@ -401,16 +404,31 @@ function AccountCard({ a, i, balance, count, onImport, onEdit }: {
 const KINDS: AccountKind[] = ['bank', 'card', 'wallet', 'invest']
 const COLORS = ['#ec0000', '#0b8fd6', '#2563eb', '#38bdf8', '#9fe870', '#e5e7eb', '#4ade80', '#fbbf24', '#f472b6', '#a78bfa']
 
+/** De dónde le llegan los datos a cada cuenta: según eso, el formulario enseña solo lo que tiene sentido tocar. */
+type Feed = 'caixa-bank' | 'caixa-card' | 'carrefour' | 'wise' | 'invest' | 'manual'
+function feedOf(a: Account, isNew: boolean): Feed {
+  if (isNew) return 'manual'
+  if (isCaixa(a)) return a.kind === 'card' ? 'caixa-card' : 'caixa-bank'
+  if (/carrefour/i.test(`${a.id} ${a.name}`)) return 'carrefour'
+  if (/wise/i.test(`${a.id} ${a.name}`)) return 'wise'
+  return a.kind === 'invest' ? 'invest' : 'manual'
+}
+
 function AccountModal({ account, hasHoldings, onClose, onSave, onDelete }: {
   account: Account | null; hasHoldings?: boolean; onClose: () => void; onSave: (a: Account) => void; onDelete: (id: string, onlyTxs: boolean) => void
 }) {
   const [txs] = useTxs()
+  const [accounts] = useAccounts()
   const [a, setA] = useState<Account>(account ?? { id: crypto.randomUUID(), name: '', kind: 'bank', color: COLORS[6], emoji: '🏦' })
-  const current = account ? netWorth([account], txs).balances[account.id] : null
+  const feed = feedOf(account ?? a, !account)
+  const current = account ? netWorth(accounts, txs).balances[account.id] : null
   const [value, setValue] = useState(current ? String(current.value).replace('.', ',') : '')
   const [invested, setInvested] = useState(a.invested != null ? String(a.invested).replace('.', ',') : '')
   const count = txs.filter((t) => t.accountId === a.id).length
   const num = (s: string) => (s.trim() === '' ? undefined : Number(s.replace(/\./g, '').replace(',', '.')))
+  const detectedDebit = account && feed === 'caixa-card' ? cardIsDebit({ ...account, cardType: undefined }, txs, accounts) : false
+  const lastMail = txs.filter((t) => t.accountId === a.id && t.source === 'mail').reduce((m, t) => (t.date > m ? t.date : m), '')
+  const fmtDate = (d: string) => new Date(`${d}T12:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 
   const save = () => {
     const v = num(value)
@@ -422,60 +440,145 @@ function AccountModal({ account, hasHoldings, onClose, onSave, onDelete }: {
     onSave(next)
   }
 
+  const balanceField = (label: string, help: string) => (
+    <label className="field">
+      <span>{label}</span>
+      <input className="input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" />
+      <small className="faint">{help}</small>
+    </label>
+  )
+
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal single" onClick={(e) => e.stopPropagation()}>
         <button className="icon-btn modal-close" onClick={onClose}><X size={18} /></button>
         <h2>{account ? 'Editar cuenta' : 'Nueva cuenta'}</h2>
         <div className="form-grid">
-          <div className="row">
-            <input className="input" style={{ width: 64, textAlign: 'center', fontSize: 20 }} value={a.emoji} onChange={(e) => setA({ ...a, emoji: e.target.value })} />
+          <div className="row" style={{ gap: 10 }}>
+            <AccountIcon a={a} />
             <input className="input" style={{ flex: 1 }} placeholder="Nombre" value={a.name} onChange={(e) => setA({ ...a, name: e.target.value })} autoFocus={!account} />
           </div>
-          <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <AccountIcon a={a} />
-            <label className="field" style={{ flex: '1 1 160px' }}>
-              <span>Web del banco (para el logo)</span>
-              <input className="input" placeholder={accountDomain({ name: a.name }) || 'mibanco.es'} value={a.domain ?? ''} onChange={(e) => setA({ ...a, domain: e.target.value || undefined, logo: undefined })} spellCheck={false} disabled={!!a.logo} />
-            </label>
-            {a.logo ? (
-              <button className="btn sm ghost" onClick={() => setA({ ...a, logo: undefined })}><X size={13} /> Quitar logo</button>
-            ) : (
-              <label className="btn sm ghost" style={{ cursor: 'pointer' }}>
-                <Upload size={13} /> Subir logo
-                <input type="file" accept="image/*" hidden onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) shrinkLogo(f).then((logo) => setA((x) => ({ ...x, logo })), (err) => alert(err.message))
-                  e.target.value = ''
-                }} />
+
+          {feed === 'caixa-bank' && (
+            <>
+              <div className="notice">✉️ <span>Movimientos y saldo llegan solos con los avisos de CaixaBank por correo («Todos los movimientos de la cuenta» y «Saldo a una fecha concreta»).</span></div>
+              <label className="field">
+                <span>Termina en</span>
+                <input className="input" value={a.ending ?? ''} onChange={(e) => setA({ ...a, ending: e.target.value.replace(/\D/g, '') || undefined })} placeholder="603" inputMode="numeric" />
+                <small className="faint">Las últimas cifras de la cuenta, como salen en los avisos («la cuenta acabada en …»).</small>
               </label>
-            )}
-          </div>
-          <div className="seg" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-            {KINDS.map((k) => <button key={k} className={a.kind === k ? 'active' : ''} onClick={() => setA({ ...a, kind: k })}>{KIND_LABEL[k]}</button>)}
-          </div>
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            {COLORS.map((c) => (
-              <button key={c} className={`swatch ${a.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setA({ ...a, color: c })} />
-            ))}
-          </div>
-          <label className="field">
-            <span>{hasHoldings ? 'Efectivo sin invertir (€)' : a.kind === 'invest' ? 'Valor actual (€)' : a.kind === 'card' ? 'Deuda actual (€, en negativo)' : 'Saldo actual (€)'}</span>
-            <input className="input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" />
-            <small className="faint">
-              {hasHoldings
-                ? 'Las posiciones de la cartera se suman solas con su cotización; aquí va solo el efectivo.'
-                : a.kind === 'invest'
-                ? 'Cada vez que lo actualices se guarda un punto para ver la evolución.'
-                : 'Opcional si el archivo del banco trae columna de saldo; los movimientos posteriores se suman solos.'}
-            </small>
-          </label>
-          {a.kind === 'invest' && (
-            <label className="field">
-              <span>Dinero aportado (€)</span>
-              <input className="input" inputMode="decimal" value={invested} onChange={(e) => setInvested(e.target.value)} placeholder="Para calcular la rentabilidad" />
-            </label>
+              <div className="acct-facts">
+                <div><span>Saldo</span><b>{current ? <Money v={current.value} /> : '—'}</b></div>
+                <div><span>Último aviso de saldo</span><b>{a.manual ? fmtDate(a.manual.at) : '—'}</b></div>
+                <div><span>Último movimiento</span><b>{lastMail ? fmtDate(lastMail) : '—'}</b></div>
+              </div>
+            </>
           )}
+
+          {feed === 'caixa-card' && (
+            <>
+              <div className="notice">💳 <span>Las compras llegan solas con los avisos de CaixaBank «Movimientos de tarjetas».</span></div>
+              <div className="field">
+                <span>Tipo de tarjeta</span>
+                <div className="seg">
+                  {([[undefined, `Automático (${detectedDebit ? 'débito' : 'crédito'})`], ['credit', 'Crédito'], ['debit', 'Débito']] as const).map(([k, label]) => (
+                    <button key={label} className={a.cardType === k ? 'active' : ''} onClick={() => setA({ ...a, cardType: k })}>{label}</button>
+                  ))}
+                </div>
+                <small className="faint">
+                  {(a.cardType ?? (detectedDebit ? 'debit' : 'credit')) === 'debit'
+                    ? 'Débito: cada compra se cobra al momento en la cuenta. El gasto se cuenta en la tarjeta (con el comercio) y el cargo repetido en la cuenta pasa a traspaso. No acumula deuda.'
+                    : 'Crédito: las compras se acumulan y se pagan juntas una vez al mes. Ese cobro en la cuenta es un traspaso, no un gasto, y deja la deuda de la tarjeta a cero.'}
+                </small>
+              </div>
+              <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                <label className="field" style={{ flex: '1 1 140px' }}>
+                  <span>Nombre en los avisos</span>
+                  <input className="input" value={a.product ?? ''} onChange={(e) => setA({ ...a, product: e.target.value.trim() ? e.target.value.toUpperCase() : undefined })} placeholder={cardProduct(a).toUpperCase() || 'MYCARD'} spellCheck={false} />
+                  <small className="faint">Como sale en «con tu tarjeta … acabada en»: con él se reconoce su cobro mensual en la cuenta.</small>
+                </label>
+                <label className="field" style={{ flex: '0 1 110px' }}>
+                  <span>Termina en</span>
+                  <input className="input" value={a.ending ?? ''} onChange={(e) => setA({ ...a, ending: e.target.value.replace(/\D/g, '') || undefined })} inputMode="numeric" />
+                </label>
+              </div>
+              <div className="acct-facts">
+                <div><span>{(a.cardType ?? (detectedDebit ? 'debit' : 'credit')) === 'debit' ? 'Deuda' : 'Pendiente de pagar'}</span><b>{current ? <Money v={current.value} /> : (a.cardType ?? (detectedDebit ? 'debit' : 'credit')) === 'debit' ? 'No tiene' : '—'}</b></div>
+                <div><span>Último movimiento</span><b>{lastMail ? fmtDate(lastMail) : '—'}</b></div>
+              </div>
+            </>
+          )}
+
+          {feed === 'carrefour' && (
+            <>
+              <div className="notice">📄 <span>Se actualiza importando el extracto mensual en PDF de Carrefour Pass. Su cobro en la cuenta de CaixaBank cuenta como traspaso.</span></div>
+              {balanceField('Deuda actual (€, en negativo)', 'Opcional: lo que debes hoy según la app de Carrefour Pass.')}
+            </>
+          )}
+
+          {feed === 'wise' && (
+            <div className="notice">🌍 <span>La cartera se rellena importando el extracto CSV de Wise desde su tarjeta de cartera (Cuenta en EUR → Extractos → CSV).</span></div>
+          )}
+
+          {feed === 'invest' && (
+            <>
+              {balanceField(hasHoldings ? 'Efectivo sin invertir (€)' : 'Valor actual (€)', hasHoldings
+                ? 'Las posiciones de la cartera se suman solas con su cotización; aquí va solo el efectivo.'
+                : 'Cada vez que lo actualices se guarda un punto para ver la evolución.')}
+              {!hasHoldings && (
+                <label className="field">
+                  <span>Dinero aportado (€)</span>
+                  <input className="input" inputMode="decimal" value={invested} onChange={(e) => setInvested(e.target.value)} placeholder="Para calcular la rentabilidad" />
+                </label>
+              )}
+            </>
+          )}
+
+          {feed === 'manual' && (
+            <>
+              {!account && (
+                <div className="seg" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                  {KINDS.map((k) => <button key={k} className={a.kind === k ? 'active' : ''} onClick={() => setA({ ...a, kind: k })}>{KIND_LABEL[k]}</button>)}
+                </div>
+              )}
+              {balanceField(
+                a.kind === 'invest' ? 'Valor actual (€)' : a.kind === 'card' ? 'Deuda actual (€, en negativo)' : 'Saldo actual (€)',
+                'Los movimientos se añaden importando el archivo del banco; los posteriores al saldo se suman solos.',
+              )}
+            </>
+          )}
+
+          <details className="acct-more">
+            <summary>Aspecto</summary>
+            <div className="form-grid" style={{ marginTop: 10 }}>
+              <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <input className="input" style={{ width: 64, textAlign: 'center', fontSize: 20 }} value={a.emoji} onChange={(e) => setA({ ...a, emoji: e.target.value })} title="Emoji si no hay logo" />
+                <label className="field" style={{ flex: '1 1 160px' }}>
+                  <span>Web del banco (para el logo)</span>
+                  <input className="input" placeholder={accountDomain({ name: a.name }) || 'mibanco.es'} value={a.domain ?? ''} onChange={(e) => setA({ ...a, domain: e.target.value || undefined, logo: undefined })} spellCheck={false} disabled={!!a.logo} />
+                </label>
+                {a.logo ? (
+                  <button className="btn sm ghost" onClick={() => setA({ ...a, logo: undefined })}><X size={13} /> Quitar logo</button>
+                ) : (
+                  <label className="btn sm ghost" style={{ cursor: 'pointer' }}>
+                    <Upload size={13} /> Subir logo
+                    <input type="file" accept="image/*" hidden onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) shrinkLogo(f).then((logo) => setA((x) => ({ ...x, logo })), (err) => alert(err.message))
+                      e.target.value = ''
+                    }} />
+                  </label>
+                )}
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                {COLORS.map((c) => (
+                  <button key={c} className={`swatch ${a.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setA({ ...a, color: c })} />
+                ))}
+              </div>
+              {feed === 'caixa-bank' && balanceField('Corregir el saldo a mano (€)', 'Solo si el aviso de saldo no llega: el siguiente aviso lo sustituye.')}
+            </div>
+          </details>
+
           <button className="btn primary" onClick={save}>Guardar</button>
           {account && (
             <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>

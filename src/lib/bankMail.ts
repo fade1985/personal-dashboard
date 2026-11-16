@@ -9,7 +9,7 @@
 import { useEffect } from 'react'
 import { gapi } from './google'
 import { readStore, saveStore } from './storage'
-import { DEFAULT_ACCOUNTS, categorize, type Account, type Rule, type Tx } from './finance'
+import { DEFAULT_ACCOUNTS, categorize, reconcileCards, type Account, type Rule, type Tx } from './finance'
 import { parseCaixa, parsePayPal } from './bankMailParse'
 
 export { parseCaixa, parsePayPal }
@@ -140,13 +140,14 @@ export async function syncBankMail(): Promise<BankMailStatus> {
   const ensureCard = (ending: string, card = 'Tarjeta') => {
     let a = accounts.find((x) => x.ending === ending)
     if (!a) {
-      a = { id: `caixa-card-${ending}`, name: `${cap(card)} CaixaBank`, kind: 'card', color: '#0b8fd6', emoji: '💳', domain: 'caixabank.es', ending }
+      a = { id: `caixa-card-${ending}`, name: `${cap(card)} CaixaBank`, kind: 'card', color: '#0b8fd6', emoji: '💳', domain: 'caixabank.es', ending, product: card }
       accounts = [...accounts, a]
       newAccounts.set(a.id, a)
+    } else if (!a.product && card !== 'Tarjeta') {
+      a = patch(a.id, { product: card })
     }
     return a
   }
-  const cardNames = () => accounts.filter((a) => a.kind === 'card' && a.ending).map((a) => a.name.split(' ')[0].toLowerCase())
   const push = (t: Tx) => {
     if (have.has(t.id)) return
     have.add(t.id)
@@ -166,9 +167,8 @@ export async function syncBankMail(): Promise<BankMailStatus> {
         return
       }
       const bank = ensureBank(mv.ending)
-      // "CARGO de MYCARD": el pago mensual de la tarjeta. No es gasto (las compras ya están en la tarjeta)
-      const settles = mv.amount < 0 && (/\bmycard\b/i.test(mv.desc) || cardNames().includes(mv.desc.toLowerCase()))
-      push({ id, accountId: bank.id, date: mv.date, desc: mv.desc, amount: mv.amount, category: settles ? 'transfer' : categorize(mv.desc, mv.amount, rules), source: 'mail' })
+      // El cobro de las tarjetas y las compras con débito repetidas los marca reconcileCards al final
+      push({ id, accountId: bank.id, date: mv.date, desc: mv.desc, amount: mv.amount, category: categorize(mv.desc, mv.amount, rules), source: 'mail' })
     })
     for (const b of bals) {
       const bank = ensureBank(b.ending)
@@ -197,7 +197,7 @@ export async function syncBankMail(): Promise<BankMailStatus> {
   const freshTxs = readStore<Tx[]>('fin-txs', [])
   const known = new Set(freshTxs.map((t) => t.id))
   const withNew = [...freshTxs, ...newTxs.filter((t) => !known.has(t.id))]
-  const fixed = cardPayments(withNew, accounts)
+  const fixed = reconcileCards(withNew, accounts)
   if (newTxs.length || fixed !== withNew) saveStore('fin-txs', fixed)
   saveStore(SEEN_KEY, [...seen])
   saveStore(INIT_KEY, SENDERS)
@@ -205,29 +205,6 @@ export async function syncBankMail(): Promise<BankMailStatus> {
   const status: BankMailStatus = { at: Date.now(), added, balances, lastBalance: lastBalance ?? prev.lastBalance, unknown }
   saveStore(STATUS_KEY, status)
   return status
-}
-
-/**
- * Rehace los "Pago de la tarjeta" (abonos en la tarjeta que reflejan el cargo de MYCARD en la cuenta).
- * El cargo del día 1 paga las compras ANTERIORES a ese día (el ciclo del mes pasado); las del mismo día
- * ya son del ciclo siguiente. Nunca paga más de lo que se conoce: las compras de antes de empezar a
- * leer los avisos no están, y sin esto la tarjeta quedaría en positivo.
- */
-export function cardPayments(txs: Tx[], accounts: Account[]): Tx[] {
-  const card = accounts.find((a) => a.kind === 'card' && a.ending && /caixa/i.test(a.name + (a.domain ?? '')))
-  const rest = txs.filter((t) => !(t.source === 'mail' && t.id.endsWith(':card')))
-  if (!card) return rest.length === txs.length ? txs : rest
-  const settlements = rest
-    .filter((t) => t.source === 'mail' && t.accountId !== card.id && t.category === 'transfer' && t.amount < 0 && /\bmycard\b/i.test(t.desc))
-    .sort((a, b) => a.date.localeCompare(b.date))
-  const out = [...rest]
-  for (const s of settlements) {
-    const owed = -out.filter((t) => t.accountId === card.id && t.date < s.date).reduce((sum, t) => sum + t.amount, 0)
-    const paid = Math.min(-s.amount, Math.max(0, Math.round(owed * 100) / 100))
-    if (paid > 0) out.push({ id: `${s.id}:card`, accountId: card.id, date: s.date, desc: 'Pago de la tarjeta', amount: paid, category: 'transfer', source: 'mail' })
-  }
-  const same = out.length === txs.length && out.every((t) => txs.some((x) => x.id === t.id && x.amount === t.amount))
-  return same ? txs : out
 }
 
 let running: Promise<BankMailStatus> | null = null
