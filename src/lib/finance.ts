@@ -168,6 +168,9 @@ export function recategorizeFallbacks(txs: Tx[], rules: Rule[]): Tx[] | null {
 
 // ---------- Tarjetas de CaixaBank: que nada cuente dos veces ----------
 
+/** "Pago de la tarjeta" calculado a partir del cobro en la cuenta (se rehace cada vez) */
+const isCardPayment = (t: Tx) => t.source === 'mail' && /:card(:|$)/.test(t.id)
+
 const DAY = 864e5
 export const isCaixa = (a: Account) => /caixa/i.test(`${a.id} ${a.name} ${a.domain ?? ''}`)
 
@@ -185,7 +188,7 @@ const settlesCard = (t: Tx, cards: Account[]) => t.amount < 0 && cards.some((c) 
  * es lo que pasa con una de débito. Devuelve, para cada cargo de la cuenta, la compra a la que repite.
  */
 function debitTwins(card: Account, txs: Tx[], bankIds: Set<string>, cards: Account[]) {
-  const buys = txs.filter((t) => t.accountId === card.id && t.amount < 0 && !t.id.endsWith(':card'))
+  const buys = txs.filter((t) => t.accountId === card.id && t.amount < 0 && !isCardPayment(t))
   const pool = new Map<number, Tx[]>()
   for (const t of txs) {
     if (!bankIds.has(t.accountId) || t.amount >= 0 || t.manual || settlesCard(t, cards)) continue
@@ -221,7 +224,7 @@ export function reconcileCards(txs: Tx[], accounts: Account[]): Tx[] {
   const bankIds = new Set(banks.map((a) => a.id))
   // Partimos de cero: sin los pagos de tarjeta calculados y con las categorías de antes en los cargos marcados
   let out = txs
-    .filter((t) => !(t.source === 'mail' && t.id.endsWith(':card')))
+    .filter((t) => !isCardPayment(t))
     .map((t) => (t.mirror != null ? { ...t, category: t.manual ? t.category : t.mirror, mirror: undefined } : t))
 
   const mark = (ids: Set<string>) => {
@@ -234,17 +237,26 @@ export function reconcileCards(txs: Tx[], accounts: Account[]): Tx[] {
     if (!cardIsDebit(c, out, accounts)) continue
     mark(new Set(debitTwins(c, out, bankIds, cards).twins.keys()))
   }
-  // Pago de cada tarjeta de crédito: el cobro del día 1 paga las compras ANTERIORES a ese día; nunca más de lo que se conoce
-  // (las compras de antes de empezar a leer los avisos no están, y sin esto la tarjeta quedaría en positivo)
-  for (const c of cards) {
-    if (cardIsDebit(c, out, accounts)) continue
-    const settlements = out
-      .filter((t) => bankIds.has(t.accountId) && t.category === 'transfer' && settlesCard(t, [c]))
-      .sort((a, b) => a.date.localeCompare(b.date))
-    for (const st of settlements) {
-      const owed = -out.filter((t) => t.accountId === c.id && t.date < st.date).reduce((sum, t) => sum + t.amount, 0)
-      const paid = Math.min(-st.amount, Math.max(0, Math.round(owed * 100) / 100))
-      if (paid > 0) out.push({ id: `${st.id}:card`, accountId: c.id, date: st.date, desc: 'Pago de la tarjeta', amount: paid, category: 'transfer', source: 'mail' })
+  // Pago de las tarjetas de crédito: el cobro del día 1 paga las compras ANTERIORES a ese día; nunca más de lo que se conoce
+  // (las compras de antes de empezar a leer los avisos no están, y sin esto la tarjeta quedaría en positivo).
+  // Si varias tarjetas se llaman igual (dos MYCARD), el cobro va a la que debe justo ese importe; si no, se reparte.
+  const credit = cards.filter((c) => !cardIsDebit(c, out, accounts))
+  const settlements = out
+    .filter((t) => bankIds.has(t.accountId) && t.category === 'transfer' && settlesCard(t, credit))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+  for (const st of settlements) {
+    const owedBy = credit
+      .filter((c) => settlesCard(st, [c]))
+      .map((c) => ({ c, owed: Math.max(0, Math.round(-out.filter((t) => t.accountId === c.id && t.date < st.date).reduce((sum, t) => sum + t.amount, 0) * 100) / 100) }))
+      .filter((x) => x.owed > 0)
+    let left = -st.amount
+    const exact = owedBy.find((x) => Math.abs(x.owed - left) < 0.01)
+    const order = exact ? [exact] : owedBy.sort((x, y) => Math.abs(x.owed - left) - Math.abs(y.owed - left))
+    for (const { c, owed } of order) {
+      const paid = Math.round(Math.min(left, owed) * 100) / 100
+      if (paid <= 0) break
+      out.push({ id: `${st.id}:card:${c.id}`, accountId: c.id, date: st.date, desc: 'Pago de la tarjeta', amount: paid, category: 'transfer', source: 'mail' })
+      left -= paid
     }
   }
   const before = new Map(txs.map((t) => [t.id, t]))

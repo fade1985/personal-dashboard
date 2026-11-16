@@ -140,7 +140,9 @@ export async function syncBankMail(): Promise<BankMailStatus> {
   const ensureCard = (ending: string, card = 'Tarjeta') => {
     let a = accounts.find((x) => x.ending === ending)
     if (!a) {
-      a = { id: `caixa-card-${ending}`, name: `${cap(card)} CaixaBank`, kind: 'card', color: '#0b8fd6', emoji: '💳', domain: 'caixabank.es', ending, product: card }
+      // Dos tarjetas con el mismo nombre (dos MYCARD): se distinguen por sus últimas cifras
+      const name = accounts.some((x) => x.name === `${cap(card)} CaixaBank`) ? `${cap(card)} …${ending}` : `${cap(card)} CaixaBank`
+      a = { id: `caixa-card-${ending}`, name, kind: 'card', color: '#0b8fd6', emoji: '💳', domain: 'caixabank.es', ending, product: card }
       accounts = [...accounts, a]
       newAccounts.set(a.id, a)
     } else if (!a.product && card !== 'Tarjeta') {
