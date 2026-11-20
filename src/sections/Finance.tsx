@@ -77,7 +77,7 @@ export default function Finance() {
     return () => clearTimeout(t)
   }, [toast])
 
-  const { byAccount, holdings } = usePortfolio()
+  const { byAccount, holdings, totals: pfTotals } = usePortfolio()
   const worth = useMemo(() => netWorth(accounts, txs, byAccount), [accounts, txs, byAccount])
   const flow = useMemo(() => monthFlow(txs, month), [txs, month])
   const prev = useMemo(() => monthFlow(txs, shiftMonth(month, -1)), [txs, month])
@@ -208,29 +208,78 @@ export default function Finance() {
           <CashflowBars data={months} selected={month} onSelect={setMonth} />
         </Card>
 
-        {/* Una cartera por cuenta de inversión (y por cualquier otra cuenta que tenga posiciones) */}
+        {/* Inversiones: una cartera por cuenta (Trade Republic, Wise…). La grande ocupa más y la pequeña va estrecha */}
         {(() => {
-          const withPf = accounts.filter((a) => a.kind === 'invest' || holdings.some((h) => h.accountId === a.id))
-          return withPf.map((a, k) => (
-            <PortfolioCard key={a.id} accounts={accounts} account={a} i={3 + k} className={withPf.length > 1 ? 'span-6' : 'span-12'} />
-          ))
+          const count = (id: string) => holdings.filter((h) => h.accountId === id).length
+          const withPf = accounts
+            .filter((a) => a.kind === 'invest' || holdings.some((h) => h.accountId === a.id))
+            .sort((x, y) => count(y.id) - count(x.id))
+          if (!withPf.length) return null
+          const pair = withPf.length === 2 && count(withPf[1].id) <= 2 && count(withPf[0].id) > count(withPf[1].id)
+          const span = (k: number) => withPf.length === 1 ? 'span-12' : pair ? (k === 0 ? 'span-8' : 'span-4') : 'span-6'
+          return (
+            <>
+              <div className="span-12 section-title" style={{ marginBottom: 0 }}>
+                <h2>Inversiones</h2>
+                {pfTotals && (
+                  <div className="inv-head">
+                    <span><b><Money v={worth.invest} decimals={0} /></b></span>
+                    <span>hoy <span className={pfTotals.day >= 0 ? 'pos' : 'neg'}><Money v={pfTotals.day} sign decimals={0} /></span></span>
+                    <span>desde que compraste <span className={pfTotals.gain >= 0 ? 'pos' : 'neg'}><Money v={pfTotals.gain} sign decimals={0} /> ({Math.round(pfTotals.gainPct * 1000) / 10} %)</span></span>
+                  </div>
+                )}
+              </div>
+              {withPf.map((a, k) => (
+                <PortfolioCard
+                  key={a.id} accounts={accounts} account={a} i={3 + k} className={span(k)} compact={span(k) === 'span-4'}
+                  onEditAccount={/wise/i.test(`${a.id} ${a.name}`) ? undefined : () => setEditing(a)}
+                />
+              ))}
+            </>
+          )
         })()}
 
-        {/* Cuentas */}
+        {/* Cuentas: solo las de verdad (bancos). Tarjetas y monederos van aparte, en pequeño */}
         <div className="span-12">
           <div className="section-title">
             <h2>Cuentas</h2>
             <button className="btn sm ghost" onClick={() => setEditing('new')}><Plus size={14} /> Nueva cuenta</button>
           </div>
           <div className="acct-grid">
-            {accounts.map((a, k) => (
+            {accounts.filter((a) => a.kind === 'bank').map((a, k) => (
               <AccountCard
                 key={a.id} a={a} i={k + 3} balance={worth.balances[a.id]} count={txs.filter((t) => t.accountId === a.id).length}
-                debit={a.kind === 'card' && cardIsDebit(a, txs, accounts)}
                 onImport={() => openPicker(a.id)} onEdit={() => setEditing(a)}
               />
             ))}
           </div>
+          {(() => {
+            const minor = accounts.filter((a) => a.kind === 'card' || a.kind === 'wallet')
+            if (!minor.length) return null
+            return (
+              <div className="acct-minor">
+                <div className="acct-minor-label">Tarjetas y otros (sus movimientos cuentan en los gastos; no son cuentas)</div>
+                {minor.map((a) => {
+                  const debit = a.kind === 'card' && cardIsDebit(a, txs, accounts)
+                  const b = worth.balances[a.id]
+                  return (
+                    <div key={a.id} className="acct-chip">
+                      <AccountIcon a={a} />
+                      <span className="acct-chip-text">
+                        <b>{a.name}</b>
+                        <small>
+                          {a.kind === 'card' ? (debit ? 'Débito · sin deuda' : b ? <>Pendiente <Money v={b.value} /></> : 'Crédito') : b ? <Money v={b.value} /> : 'Monedero'}
+                          {' · '}{txs.filter((t) => t.accountId === a.id).length} mov.
+                        </small>
+                      </span>
+                      <button className="icon-btn" onClick={() => openPicker(a.id)} title="Importar movimientos"><Upload size={13} /></button>
+                      <button className="icon-btn" onClick={() => setEditing(a)} title="Editar"><Pencil size={13} /></button>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
 
         <div className="span-12">

@@ -1,9 +1,9 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { ChartCandlestick, FileUp, Plus, Search, Trash2, X } from 'lucide-react'
+import { ChartCandlestick, FileUp, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { Card, CardTitle } from '../components/ui'
 import { eur, type Account } from '../lib/finance'
-import { parseWiseStatement, position, quoteKey, searchSymbols, summarize, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
+import { parseWiseStatement, position, quoteKey, searchSymbols, summarize, useHistory, usePortfolio, type Holding, type Lot, type Position } from '../lib/portfolio'
 import { Money } from './Finance'
 import { HoldingDetail, Logo } from './PortfolioDetail'
 import { AccountIcon } from '../components/AccountIcon'
@@ -42,7 +42,12 @@ function Spark({ points, up }: { points: number[]; up: boolean }) {
 }
 
 /** Cartera de una cuenta (Trade Republic, Wise…), con sus propios totales. Sin `account`, todas juntas. */
-export function PortfolioCard({ accounts, account, i, className = 'span-12' }: { accounts: Account[]; account?: Account; i: number; className?: string }) {
+export function PortfolioCard({ accounts, account, i, className = 'span-12', compact, onEditAccount }: {
+  accounts: Account[]; account?: Account; i: number; className?: string
+  /** Tarjeta estrecha: cifras en dos columnas y, con un solo fondo, la gráfica de su valor */
+  compact?: boolean
+  onEditAccount?: () => void
+}) {
   const all = usePortfolio()
   const { updatedAt, setHoldings } = all
   const positions = account ? all.positions.filter((p) => p.holding.accountId === account.id) : all.positions
@@ -86,7 +91,7 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
     ? 'Hoy' : `El ${new Date(lastTrade).toLocaleDateString('es-ES', { weekday: 'long' })}`
 
   return (
-    <Card className={`${className} pf`} i={i} accent={account?.color ?? C}>
+    <Card className={`${className} pf ${compact ? 'pf-compact' : ''}`} i={i} accent={account?.color ?? C}>
       <CardTitle
         icon={account ? <AccountIcon a={account} /> : <ChartCandlestick size={16} />} color={account?.color ?? C}
         title={account ? account.name : 'Cartera'}
@@ -99,6 +104,7 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
               </label>
             )}
             {!isWise && <button className="btn sm ghost" onClick={() => setEditing('new')}><Plus size={14} /> Añadir posición</button>}
+            {onEditAccount && <button className="icon-btn" onClick={onEditAccount} title="Editar cuenta"><Pencil size={14} /></button>}
           </div>
         }
       />
@@ -117,9 +123,10 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
             <div className="muted" style={{ fontSize: 13 }}>Desde que compraste</div>
             <div className={`pf-num ${totals.gain >= 0 ? 'pos' : 'neg'}`}><Money v={totals.gain} sign /> <small>{pct(totals.gainPct)}</small></div>
           </div>
-          <div className="faint" style={{ fontSize: 12, alignSelf: 'end' }}>Actualizado {ago(updatedAt)}</div>
+          {!compact && <div className="faint" style={{ fontSize: 12, alignSelf: 'end' }}>Actualizado {ago(updatedAt)}</div>}
         </div>
       )}
+      {compact && positions.length === 1 && <ValueChart holding={positions[0].holding} price={positions[0].quote?.price} color={account?.color ?? C} />}
       {positions.length ? (
         <div className="pf-list">
           {positions.map((p) => <Row key={p.holding.id} p={p} account={accounts.find((a) => a.id === p.holding.accountId)} onOpen={() => setViewing(p.holding.id)} />)}
@@ -156,6 +163,73 @@ export function PortfolioCard({ accounts, account, i, className = 'span-12' }: {
         document.body,
       )}
     </Card>
+  )
+}
+
+const DAY = 864e5
+
+/**
+ * Valor de la cuenta desde la primera compra (participaciones de cada día × precio de ese día) frente a lo aportado.
+ * Para las carteras de un solo fondo, que si no dejan la tarjeta medio vacía.
+ */
+function ValueChart({ holding, price: live, color }: { holding: Holding; price?: number; color: string }) {
+  const hist = useHistory(quoteKey(holding))
+  const [hover, setHover] = useState<number | null>(null)
+  const lots = [...holding.lots].filter((l) => l.date).sort((a, b) => a.date!.localeCompare(b.date!))
+  const start = lots[0] ? Date.parse(`${lots[0].date}T00:00:00`) : 0
+  let daily = (hist.data?.daily ?? []).filter(([t]) => t >= start - DAY)
+  // Termina en el precio de ahora, el mismo con el que se calcula el valor de la tarjeta
+  if (live && daily.length) daily = [...daily.filter(([t]) => t < Date.now() - 12 * 36e5), [Date.now(), live]]
+  if (!lots.length || daily.length < 2) {
+    return <div className="pf-chart empty-chart faint">{hist.error ? 'Sin histórico de este fondo' : 'Cargando evolución…'}</div>
+  }
+  // Una muestra por semana basta y deja la línea limpia
+  const step = Math.max(1, Math.floor(daily.length / 160))
+  const pts = daily.filter((_, k) => k % step === 0 || k === daily.length - 1).map(([t, price]) => {
+    let qty = 0, put = 0
+    for (const l of lots) {
+      if (Date.parse(`${l.date}T23:59:59`) > t) break
+      qty += l.qty
+      put += l.kind ? l.qty * l.price : l.qty * l.price + l.fee
+    }
+    return { t, value: qty * price, put }
+  })
+  const w = 600, h = 150, pad = 4
+  const hi = Math.max(...pts.map((p) => Math.max(p.value, p.put))) * 1.04
+  const x = (k: number) => (k / (pts.length - 1)) * w
+  const y = (v: number) => h - pad - (v / hi) * (h - pad * 2)
+  const line = (f: (p: (typeof pts)[number]) => number) => pts.map((p, k) => `${k ? 'L' : 'M'}${x(k).toFixed(1)},${y(f(p)).toFixed(1)}`).join('')
+  // Lo aportado sube a escalones (cada recarga), no en diagonal
+  const steps = pts.map((p, k) => `${k ? `L${x(k).toFixed(1)},${y(pts[k - 1].put).toFixed(1)}L` : 'M'}${x(k).toFixed(1)},${y(p.put).toFixed(1)}`).join('')
+  const sel = pts[hover ?? pts.length - 1]
+  const when = new Date(sel.t).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+  return (
+    <div className="pf-chart" style={{ '--ac': color } as CSSProperties}>
+      <div className="pf-chart-legend">
+        <span><i style={{ background: color }} /> Valor <b><Money v={sel.value} decimals={0} /></b></span>
+        <span><i className="put" /> Aportado <b><Money v={sel.put} decimals={0} /></b></span>
+        <span className={sel.value - sel.put >= 0 ? 'pos' : 'neg'}><Money v={sel.value - sel.put} sign decimals={0} /></span>
+        <small className="faint">{hover == null ? 'Hoy' : when}</small>
+      </div>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"
+        onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHover(Math.round(((e.clientX - r.left) / r.width) * (pts.length - 1))) }}
+        onMouseLeave={() => setHover(null)}>
+        <defs>
+          <linearGradient id={`pfv-${holding.id}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor={color} stopOpacity=".32" />
+            <stop offset="1" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${line((p) => p.value)}L${w},${h}L0,${h}Z`} fill={`url(#pfv-${holding.id})`} />
+        <path d={steps} fill="none" stroke="var(--faint)" strokeWidth="1.5" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+        <path d={line((p) => p.value)} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        {hover != null && <line x1={x(hover)} x2={x(hover)} y1={0} y2={h} stroke="var(--border-2)" vectorEffect="non-scaling-stroke" />}
+      </svg>
+      <div className="pf-chart-axis faint">
+        <span>{new Date(pts[0].t).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}</span>
+        <span>Hoy</span>
+      </div>
+    </div>
   )
 }
 
