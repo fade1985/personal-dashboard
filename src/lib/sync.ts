@@ -58,7 +58,25 @@ function initialStatus(): SyncStatus {
 
 function setStatus(s: SyncStatus) {
   status = s
+  if (s.kind !== 'syncing') settled = true
   listeners.forEach((l) => l())
+}
+
+/**
+ * Ya se ha mirado Drive al menos una vez desde que se abrió la página (o no hay Drive).
+ * Hasta entonces, lo que se guarde aquí parecería más nuevo que lo de Drive y pisaría cambios hechos en otro
+ * ordenador (p. ej. una cuenta borrada allí volvería con sus movimientos): los procesos automáticos esperan a esto.
+ */
+let settled = false
+export const isSyncSettled = () => settled
+export function useSyncSettled() {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l)
+      return () => listeners.delete(l)
+    },
+    () => settled,
+  )
 }
 
 export function useSyncStatus() {

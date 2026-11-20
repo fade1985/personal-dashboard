@@ -9,6 +9,7 @@
 import { useEffect } from 'react'
 import { gapi } from './google'
 import { readStore, saveStore } from './storage'
+import { isSyncSettled } from './sync'
 import { DEFAULT_ACCOUNTS, categorize, reconcileCards, type Account, type Rule, type Tx } from './finance'
 import { parseCaixa, parsePayPal } from './bankMailParse'
 
@@ -230,10 +231,13 @@ export function useBankMailWatcher(connected: boolean) {
     const tick = () => {
       const s = readStore<BankMailStatus>(STATUS_KEY, { at: 0, added: 0, balances: 0 })
       // Tras un error (p. ej. sesión caducada y vuelta a conectar) se reintenta enseguida, sin esperar los 15 minutos
+      // Primero lo que haya en Drive de otros ordenadores; si no, guardar los avisos lo pisaría
+      if (!isSyncSettled()) return
       if (!document.hidden && (s.error || Date.now() - s.at > 14 * 60_000)) runBankMail()
     }
     tick()
     const t = setInterval(tick, 60_000)
-    return () => clearInterval(t)
+    const first = setTimeout(tick, 8_000)
+    return () => { clearInterval(t); clearTimeout(first) }
   }, [connected])
 }

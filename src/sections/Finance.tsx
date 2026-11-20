@@ -18,6 +18,7 @@ import { PortfolioCard } from './Portfolio'
 import { STATUS_KEY, runBankMail, type BankMailStatus } from '../lib/bankMail'
 import { useGoogleCtx } from '../lib/nav'
 import { usePersistentState } from '../lib/storage'
+import { useSyncSettled } from '../lib/sync'
 import { relTime } from '../components/ui'
 import { parseCarrefourPass, pdfLines } from '../lib/carrefourPdf'
 
@@ -56,12 +57,16 @@ export default function Finance() {
   const fileRef = useRef<HTMLInputElement>(null)
   const pickFor = useRef<string | undefined>(undefined)
 
+  const g = useGoogleCtx()
+  const settled = useSyncSettled()
   useEffect(() => {
+    // Con Google conectado, primero lo que venga de Drive (si no, estos ajustes pisarían cambios de otro ordenador)
+    if (g.connected && !settled) return
     const recat = recategorizeFallbacks(txs, rules) ?? txs
     // Que el cobro de las tarjetas y las compras con débito no cuenten dos veces
     const next = reconcileCards(recat, accounts)
     if (next !== txs) setTxs(next)
-  }, [txs, rules, accounts, setTxs])
+  }, [txs, rules, accounts, setTxs, g.connected, settled])
 
   // Si el mes actual aún no tiene datos, empezamos por el último mes con movimientos
   useEffect(() => {
